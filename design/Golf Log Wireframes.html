@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8" />
+<title>Golf Log — Wireframes</title>
+<style>
+  html, body { margin: 0; padding: 0; height: 100%; background: #f0eee9; }
+  * { box-sizing: border-box; }
+</style>
+<link rel="stylesheet" href="src/wireframe-styles.css" />
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel" src="src/design-canvas.jsx"></script>
+<script type="text/babel" src="src/tweaks-panel.jsx"></script>
+<script type="text/babel" src="src/wireframe-parts.jsx"></script>
+<script type="text/babel" src="src/variant-lines.jsx"></script>
+<script type="text/babel" src="src/variant-bars.jsx"></script>
+<script type="text/babel" src="src/variant-heatmap.jsx"></script>
+<script type="text/babel" src="src/variant-radar.jsx"></script>
+<script type="text/babel">
+
+const TWEAK_DEFAULTS = /*EDITMODE-BEGIN*/{
+  "accent": "#d97757",
+  "distanceUnit": "m",
+  "weightUnit": "kg"
+}/*EDITMODE-END*/;
+
+// Apply unit + accent globally via CSS var + a <style> override
+function ApplyTweaks({ accent }) {
+  React.useEffect(() => {
+    document.documentElement.style.setProperty('--user-accent', accent);
+  }, [accent]);
+  return null;
+}
+
+// Replace text occurrences of "m"/"kg" with selected unit. The wireframe
+// fakes data, so we just swap labels in headings — keeps it lo-fi but honest.
+function unitNote(distanceUnit, weightUnit) {
+  return (
+    <div style={{ position: 'fixed', top: 12, left: '50%', transform: 'translateX(-50%)', zIndex: 50,
+      background: 'rgba(31,29,26,0.92)', color: 'white', fontSize: 11, padding: '5px 10px',
+      borderRadius: 12, fontFamily: 'IBM Plex Mono, monospace', letterSpacing: '0.04em' }}>
+      units · distance: {distanceUnit} · weight: {weightUnit}
+    </div>
+  );
+}
+
+const ABW = 1180;  // artboard width
+const ABH = 720;   // artboard height
+
+function App() {
+  const [t, setTweak] = useTweaks(TWEAK_DEFAULTS);
+  return (
+    <>
+      <ApplyTweaks accent={t.accent} />
+      {unitNote(t.distanceUnit, t.weightUnit)}
+      <DesignCanvas>
+        <DCSection id="v1" title="Variant 1 · Lines" subtitle="time-series-first — best for tracking gradual change over months">
+          <DCArtboard id="v1-dash" label="Dashboard" width={ABW} height={ABH}><V1Dashboard /></DCArtboard>
+          <DCArtboard id="v1-log" label="Log workout" width={ABW} height={ABH}><V1LogWorkout /></DCArtboard>
+          <DCArtboard id="v1-dist" label="Distance trend" width={ABW} height={ABH}><V1Distance /></DCArtboard>
+          <DCArtboard id="v1-health" label="Health" width={ABW} height={ABH}><V1Health /></DCArtboard>
+          <DCArtboard id="v1-cal" label="Calendar (dotted)" width={ABW} height={ABH}><V1Calendar /></DCArtboard>
+          <DCPostIt top={-30} left={1100} rotate={-3} width={200}>
+            라인 차트 4종 — 추세 우선. driver 라인 끝에 best 마커.
+          </DCPostIt>
+        </DCSection>
+
+        <DCSection id="v2" title="Variant 2 · Bars" subtitle="comparison-first — every view is 'this vs that' (this month vs last, club vs club)">
+          <DCArtboard id="v2-dash" label="Dashboard" width={ABW} height={ABH}><V2Dashboard /></DCArtboard>
+          <DCArtboard id="v2-log" label="Log (drag bars)" width={ABW} height={ABH}><V2LogWorkout /></DCArtboard>
+          <DCArtboard id="v2-dist" label="Distance bars" width={ABW} height={ABH}><V2Distance /></DCArtboard>
+          <DCArtboard id="v2-screen" label="Screen golf input" width={ABW} height={ABH}><V2Screen /></DCArtboard>
+          <DCArtboard id="v2-health" label="Health · weekly" width={ABW} height={ABH}><V2Health /></DCArtboard>
+          <DCPostIt top={-30} left={1100} rotate={2} width={200}>
+            기록 입력 시 막대 높이로 비거리 입력하는 인터랙션도 시도해봤음.
+          </DCPostIt>
+        </DCSection>
+
+        <DCSection id="v3" title="Variant 3 · Heatmap" subtitle="consistency-first — calendar-as-grass; reward streaks and uncover patterns">
+          <DCArtboard id="v3-dash" label="Dashboard (grass)" width={ABW} height={ABH}><V3Dashboard /></DCArtboard>
+          <DCArtboard id="v3-log" label="Quick log" width={ABW} height={ABH}><V3LogWorkout /></DCArtboard>
+          <DCArtboard id="v3-cal" label="Month heatmap" width={ABW} height={ABH}><V3Calendar /></DCArtboard>
+          <DCArtboard id="v3-dist" label="Year heatmap (driver)" width={ABW} height={ABH}><V3Distance /></DCArtboard>
+          <DCArtboard id="v3-health" label="Health 365d" width={ABW} height={ABH}><V3Health /></DCArtboard>
+          <DCPostIt top={-30} left={1100} rotate={-2} width={210}>
+            github contribution-graph 느낌. 일관성과 베스트 윈도우가 한눈에.
+          </DCPostIt>
+        </DCSection>
+
+        <DCSection id="v4" title="Variant 4 · Radar" subtitle="profile-first — many-axis snapshot for shot DNA / health balance">
+          <DCArtboard id="v4-dash" label="Dual radar dash" width={ABW} height={ABH}><V4Dashboard /></DCArtboard>
+          <DCArtboard id="v4-log" label="Log + live preview" width={ABW} height={ABH}><V4LogWorkout /></DCArtboard>
+          <DCArtboard id="v4-dist" label="Per-club radars" width={ABW} height={ABH}><V4Distance /></DCArtboard>
+          <DCArtboard id="v4-screen" label="Shot DNA" width={ABW} height={ABH}><V4Screen /></DCArtboard>
+          <DCArtboard id="v4-health" label="Health radar" width={ABW} height={ABH}><V4Health /></DCArtboard>
+          <DCPostIt top={-30} left={1100} rotate={3} width={210}>
+            스크린골프 결과를 한 장의 'Shot DNA'로 — 샷 자체가 다차원이라 잘 어울림.
+          </DCPostIt>
+        </DCSection>
+      </DesignCanvas>
+
+      <TweaksPanel>
+        <TweakSection label="Theme" />
+        <TweakColor label="Accent" value={t.accent} onChange={(v) => setTweak('accent', v)} />
+        <TweakSection label="Units" />
+        <TweakRadio label="Distance" value={t.distanceUnit} options={['m', 'yd']} onChange={(v) => setTweak('distanceUnit', v)} />
+        <TweakRadio label="Weight" value={t.weightUnit} options={['kg', 'lb']} onChange={(v) => setTweak('weightUnit', v)} />
+      </TweaksPanel>
+    </>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+</script>
+</body>
+</html>

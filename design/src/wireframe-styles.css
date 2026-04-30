@@ -1,0 +1,449 @@
+/* Teal & Orange — cinematic. Cool teal grounds the UI, fairway green for play
+   surfaces, warm orange used SPARINGLY (skin-tone pop) on the hero ball / best
+   marker / CTAs. Never the background. */
+
+@import url('https://fonts.googleapis.com/css2?family=Caveat:wght@400;600&family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Sans+KR:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&family=Bebas+Neue&display=swap');
+
+:root {
+  /* Cinematic teal — moody, cool, slightly desaturated */
+  --w-bg:        #0e1f24;   /* deep teal — page background */
+  --w-paper:     #14292f;   /* card surface */
+  --w-paper-2:   #1a323a;   /* raised card */
+  --w-ink:       #e9f1f0;   /* warm-white type */
+  --w-ink-soft:  #b9ced0;
+  --w-muted:     #7d9ca1;
+  --w-faint:     #4d6c72;
+  --w-line:      #24454e;
+  --w-line-2:    #345963;
+  --w-teal:      #2c7984;
+  --w-teal-2:    #1d5862;
+
+  /* Fairway — turf greens, used for any "play surface" */
+  --w-fairway:   #2f6a3a;   /* mowed fairway */
+  --w-fairway-2: #265c30;
+  --w-fairway-3: #1f4a26;   /* rough */
+  --w-fairway-stripe: #34743f;
+  --w-fairway-light: #4a8a55;
+  --w-tee:       #c9b277;   /* sandy tee box */
+  --w-flag:      #e6a36b;
+
+  /* Cinematic orange — skin-tone warm pop. Use sparingly. */
+  --w-accent:    var(--user-accent, #e89868);
+  --w-accent-2:  #d77a4a;
+  --w-accent-soft: color-mix(in oklab, var(--w-accent) 22%, transparent);
+
+  --w-font-sans: 'IBM Plex Sans KR', 'IBM Plex Sans', system-ui, sans-serif;
+  --w-font-mono: 'IBM Plex Mono', ui-monospace, monospace;
+  --w-font-hand: 'Caveat', cursive;
+  --w-font-display: 'Bebas Neue', 'IBM Plex Sans', sans-serif;
+}
+
+.wf {
+  font-family: var(--w-font-sans);
+  color: var(--w-ink);
+  background: var(--w-bg);
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  font-size: 13px;
+  line-height: 1.45;
+  overflow: hidden;
+}
+
+.wf * { box-sizing: border-box; }
+
+/* ── Top bar ─────────────────────────────────────────────── */
+.wf-topbar {
+  display: flex;
+  align-items: center;
+  height: 52px;
+  padding: 0 20px;
+  border-bottom: 1px solid var(--w-line);
+  gap: 18px;
+  flex-shrink: 0;
+  background: linear-gradient(180deg, #102328 0%, var(--w-bg) 100%);
+}
+.wf-logo {
+  font-family: var(--w-font-display);
+  letter-spacing: 0.06em;
+  font-size: 20px;
+  color: var(--w-ink);
+}
+.wf-logo .dot { color: var(--w-accent); margin-right: 2px; }
+
+.wf-nav {
+  display: flex;
+  gap: 2px;
+  margin-left: 14px;
+}
+.wf-nav-item {
+  padding: 7px 12px;
+  border-radius: 6px;
+  font-size: 12.5px;
+  color: var(--w-muted);
+  cursor: default;
+  letter-spacing: -0.01em;
+}
+.wf-nav-item.active {
+  background: var(--w-paper-2);
+  color: var(--w-ink);
+  font-weight: 600;
+}
+
+.wf-user {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 12px;
+  color: var(--w-muted);
+}
+.wf-avatar {
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  background: var(--w-accent);
+  display: grid;
+  place-items: center;
+  font-weight: 700;
+  font-size: 12px;
+  color: #1a1410;
+}
+
+/* ── Page header ─────────────────────────────────────────── */
+.wf-pagehead {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  padding: 22px 24px 18px;
+  border-bottom: 1px solid var(--w-line);
+  gap: 16px;
+}
+.wf-pagehead h1 {
+  margin: 0;
+  font-size: 26px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  color: var(--w-ink);
+}
+.wf-pagehead .sub {
+  font-size: 12.5px;
+  color: var(--w-muted);
+  margin-top: 4px;
+  letter-spacing: -0.005em;
+}
+
+.wf-eyebrow {
+  font-family: var(--w-font-mono);
+  font-size: 10.5px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--w-accent);
+  margin-bottom: 4px;
+}
+
+/* ── Card / box ──────────────────────────────────────────── */
+.wf-box {
+  background: var(--w-paper);
+  border: 1px solid var(--w-line);
+  border-radius: 10px;
+  padding: 16px;
+  position: relative;
+}
+.wf-box.raised { background: var(--w-paper-2); }
+.wf-box.muted  { background: #102328; }
+.wf-box.fairway {
+  background: var(--w-fairway);
+  background-image:
+    repeating-linear-gradient(90deg,
+      rgba(255,255,255,0.04) 0 18px,
+      rgba(0,0,0,0.04) 18px 36px);
+  border-color: var(--w-fairway-3);
+  color: #f1f8f0;
+}
+
+.wf-box .h {
+  font-family: var(--w-font-mono);
+  font-size: 10.5px;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.16em;
+  color: var(--w-muted);
+  margin-bottom: 10px;
+}
+.wf-box.fairway .h { color: rgba(255,255,255,0.8); }
+
+.wf-box .bignum {
+  font-family: var(--w-font-display);
+  font-size: 44px;
+  font-weight: 400;
+  letter-spacing: 0.01em;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+  color: var(--w-ink);
+}
+.wf-box .bignum .unit {
+  font-family: var(--w-font-mono);
+  font-size: 13px;
+  color: var(--w-muted);
+  margin-left: 6px;
+  font-weight: 400;
+  letter-spacing: 0;
+}
+.wf-box.accent .bignum { color: var(--w-accent); }
+
+/* ── Layout ──────────────────────────────────────────────── */
+.wf-grid {
+  display: grid;
+  gap: 14px;
+  padding: 18px 22px 22px;
+  flex: 1;
+  overflow: auto;
+  align-content: start;
+}
+.wf-row { display: flex; gap: 12px; }
+.wf-col { display: flex; flex-direction: column; gap: 12px; }
+.wf-main { flex: 1; display: flex; min-height: 0; }
+.wf-content { flex: 1; display: flex; flex-direction: column; min-height: 0; overflow: auto; }
+
+/* ── Fields ──────────────────────────────────────────────── */
+.wf-field { display: flex; flex-direction: column; gap: 5px; }
+.wf-field label {
+  font-family: var(--w-font-mono);
+  font-size: 10px;
+  color: var(--w-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  font-weight: 500;
+}
+.wf-input {
+  height: 34px;
+  border: 1px solid var(--w-line-2);
+  border-radius: 6px;
+  padding: 0 10px;
+  background: var(--w-paper-2);
+  font: inherit;
+  color: var(--w-ink);
+  display: flex;
+  align-items: center;
+}
+.wf-input.placeholder {
+  color: var(--w-muted);
+  font-family: var(--w-font-mono);
+  font-size: 12px;
+}
+
+/* ── Buttons ─────────────────────────────────────────────── */
+.wf-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 34px;
+  padding: 0 14px;
+  border-radius: 6px;
+  border: 1px solid var(--w-line-2);
+  background: var(--w-paper-2);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--w-ink);
+  cursor: default;
+  letter-spacing: -0.01em;
+}
+.wf-btn.primary {
+  background: var(--w-teal);
+  color: #fff;
+  border-color: var(--w-teal);
+}
+.wf-btn.accent {
+  background: var(--w-accent);
+  color: #1a1410;
+  border-color: var(--w-accent);
+  font-weight: 600;
+}
+.wf-btn.ghost {
+  border-color: transparent;
+  color: var(--w-muted);
+  background: transparent;
+}
+.wf-btn.sm { height: 26px; padding: 0 10px; font-size: 11px; }
+
+/* ── Segmented ───────────────────────────────────────────── */
+.wf-seg {
+  display: inline-flex;
+  border: 1px solid var(--w-line-2);
+  border-radius: 6px;
+  overflow: hidden;
+  background: var(--w-paper-2);
+}
+.wf-seg button {
+  appearance: none;
+  border: 0;
+  background: transparent;
+  padding: 7px 12px;
+  font: inherit;
+  font-size: 11.5px;
+  color: var(--w-muted);
+  cursor: default;
+  border-right: 1px solid var(--w-line);
+}
+.wf-seg button:last-child { border-right: none; }
+.wf-seg button.on {
+  background: var(--w-teal);
+  color: #fff;
+  font-weight: 600;
+}
+
+/* ── Chip ────────────────────────────────────────────────── */
+.wf-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 9px;
+  border-radius: 999px;
+  background: var(--w-paper-2);
+  border: 1px solid var(--w-line);
+  font-size: 11px;
+  color: var(--w-muted);
+  font-family: var(--w-font-mono);
+  letter-spacing: 0.04em;
+}
+.wf-chip.solid {
+  background: var(--w-teal);
+  color: #fff;
+  border-color: var(--w-teal);
+}
+.wf-chip.accent {
+  background: var(--w-accent-soft);
+  color: var(--w-accent);
+  border-color: color-mix(in oklab, var(--w-accent) 40%, transparent);
+}
+.wf-chip.fairway {
+  background: var(--w-fairway);
+  color: #f1f8f0;
+  border-color: var(--w-fairway-3);
+}
+
+/* ── Notes ───────────────────────────────────────────────── */
+.wf-note {
+  font-family: var(--w-font-hand);
+  font-size: 17px;
+  color: var(--w-accent);
+  line-height: 1.1;
+}
+
+/* ── Sidebar ─────────────────────────────────────────────── */
+.wf-side {
+  width: 200px;
+  border-right: 1px solid var(--w-line);
+  padding: 16px 12px;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  background: #0a1a1e;
+}
+.wf-side .group {
+  font-family: var(--w-font-mono);
+  font-size: 9.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.16em;
+  color: var(--w-faint);
+  padding: 14px 8px 6px;
+}
+.wf-side-item {
+  padding: 7px 10px;
+  border-radius: 5px;
+  font-size: 12.5px;
+  color: var(--w-muted);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.wf-side-item.active {
+  background: var(--w-paper);
+  color: var(--w-ink);
+  font-weight: 600;
+}
+.wf-side-item .dotmark {
+  width: 6px; height: 6px; border-radius: 50%;
+  background: var(--w-line-2);
+}
+.wf-side-item.active .dotmark { background: var(--w-accent); }
+
+/* ── Tables ──────────────────────────────────────────────── */
+.wf-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12.5px;
+  color: var(--w-ink-soft);
+}
+.wf-table th, .wf-table td {
+  text-align: left;
+  padding: 9px 12px;
+  border-bottom: 1px solid var(--w-line);
+}
+.wf-table th {
+  font-family: var(--w-font-mono);
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  color: var(--w-muted);
+  font-weight: 500;
+  background: transparent;
+  border-bottom-color: var(--w-line-2);
+}
+.wf-table td.num {
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  font-family: var(--w-font-mono);
+  color: var(--w-ink);
+}
+.wf-table td.club {
+  font-weight: 600;
+  letter-spacing: -0.005em;
+  color: var(--w-ink);
+}
+.wf-table tr:last-child td { border-bottom: none; }
+
+/* ── SVG defaults ────────────────────────────────────────── */
+.wf-svg-line { stroke: var(--w-teal-2); stroke-width: 1.5; fill: none; }
+.wf-svg-line.accent { stroke: var(--w-accent); stroke-width: 2.2; }
+.wf-svg-line.teal { stroke: #5fb0bd; stroke-width: 2; }
+.wf-svg-axis { stroke: var(--w-line-2); stroke-width: 1; }
+.wf-svg-grid { stroke: var(--w-line); stroke-width: 1; stroke-dasharray: 2 4; opacity: 0.7; }
+.wf-svg-bar { fill: var(--w-teal); }
+.wf-svg-bar.accent { fill: var(--w-accent); }
+.wf-svg-bar.fairway { fill: var(--w-fairway-light); }
+.wf-svg-text { font-size: 10px; fill: var(--w-muted); font-family: var(--w-font-mono); letter-spacing: 0.04em; }
+.wf-svg-label { font-size: 11px; fill: var(--w-ink-soft); font-family: var(--w-font-sans); }
+
+/* ── Heatmap cell base ───────────────────────────────────── */
+.wf-heatcell {
+  width: 14px; height: 14px; border-radius: 3px;
+  background: #1a3338;
+}
+
+/* Focus outline */
+.wf-card-focus {
+  outline: 2px solid var(--w-accent);
+  outline-offset: -2px;
+}
+
+.wf-spark { display: block; }
+
+/* Distance pill — display number with unit */
+.wf-distance {
+  font-family: var(--w-font-display);
+  letter-spacing: 0.02em;
+  font-size: 30px;
+  font-variant-numeric: tabular-nums;
+  color: var(--w-ink);
+}
+.wf-distance .u {
+  font-family: var(--w-font-mono);
+  font-size: 12px;
+  color: var(--w-muted);
+  margin-left: 4px;
+}

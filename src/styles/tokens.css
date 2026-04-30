@@ -1,0 +1,31 @@
+:root {
+  color-scheme: dark;
+  --w-bg: #0e1f24;
+  --w-bg-soft: #102328;
+  --w-paper: #14292f;
+  --w-paper-2: #1a323a;
+  --w-ink: #e9f1f0;
+  --w-ink-soft: #b9ced0;
+  --w-muted: #7d9ca1;
+  --w-faint: #4d6c72;
+  --w-line: #24454e;
+  --w-line-2: #345963;
+  --w-teal: #2c7984;
+  --w-teal-2: #1d5862;
+  --w-teal-soft: rgba(44, 121, 132, 0.2);
+  --w-fairway: #2f6a3a;
+  --w-fairway-2: #265c30;
+  --w-fairway-3: #1f4a26;
+  --w-fairway-light: #4a8a55;
+  --w-accent: #d97757;
+  --w-accent-2: #d77a4a;
+  --w-accent-soft: rgba(217, 119, 87, 0.18);
+  --w-fill-1: #102328;
+  --w-fill-2: #1f3d45;
+  --w-fill-3: #2d5661;
+  --w-fill-4: #5fb0bd;
+  --font-sans: "IBM Plex Sans KR", "IBM Plex Sans", system-ui, sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, monospace;
+  --font-display: "Bebas Neue", "IBM Plex Sans", system-ui, sans-serif;
+  --font-hand: "Caveat", cursive;
+}

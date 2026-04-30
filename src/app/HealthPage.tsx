@@ -23,8 +23,8 @@ import { newHealthEntrySchema } from "../data/schema";
 import { useGolfLog } from "../data/store";
 import { displayToKg, displayWeightInput, formatWeight, kgToDisplay } from "../data/units";
 
-const radarAxes = ["BMI", "Sleep", "BP", "Activity", "Stability"];
-const targetRadar = [8, 8, 8, 8, 8];
+const radarAxes = ["BMI", "Sleep", "BP", "HR", "Activity", "Stability"];
+const targetRadar = [8, 8, 8, 8, 8, 8];
 
 function todayString() {
   const date = new Date();

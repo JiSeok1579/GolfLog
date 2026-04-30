@@ -71,10 +71,17 @@ function scoreSleep(value?: number) {
 }
 
 function scoreBp(entry?: HealthEntry) {
-  if (!entry?.systolic || !entry.diastolic) return 0;
+  if (typeof entry?.systolic !== "number" || typeof entry.diastolic !== "number") return 10;
   const sysPenalty = Math.abs(entry.systolic - 118) / 4;
   const diaPenalty = Math.abs(entry.diastolic - 76) / 3;
   return clampScore(10 - sysPenalty - diaPenalty);
+}
+
+function scoreRestingHr(entry?: HealthEntry) {
+  if (typeof entry?.restingHr !== "number") return 10;
+  if (entry.restingHr >= 50 && entry.restingHr <= 75) return 10;
+  const target = entry.restingHr < 50 ? 50 : 75;
+  return clampScore(10 - Math.abs(entry.restingHr - target) / 4);
 }
 
 function scoreActivity(data: AppData) {
@@ -97,6 +104,7 @@ export function healthRadarValues(data: AppData) {
     scoreBmi(bmi(data)),
     scoreSleep(latest?.sleepHours),
     scoreBp(latest),
+    scoreRestingHr(latest),
     scoreActivity(data),
     scoreWeightStability(data),
   ];

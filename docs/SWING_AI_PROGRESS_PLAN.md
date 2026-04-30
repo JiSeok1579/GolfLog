@@ -1,0 +1,122 @@
+# Golf Swing Personal AI 진행 정리
+
+작성일: 2026-04-30
+
+## 확인 결과
+
+- `golf_swing_personal_ai_implementation_guide.md`의 최종 목표는 개인 골격, ROM, 현재 스윙, 클럽 궤적을 함께 분석해서 사용자 몸에 맞는 목표 스윙과 리포트를 제공하는 것이다.
+- 가이드의 초기 구조는 FastAPI + Python pose 모델 + React UI를 전제로 한다.
+- 현재 앱은 개인 로컬 사용 전용으로 전환되어 있으며 Vite 프론트엔드와 Node 로컬 API가 이미 동작한다.
+- 따라서 지금 단계에서는 서버를 새로 늘리지 않고 기존 로컬 Node API에 Phase 0 분석 흐름을 붙인다.
+- 실제 2D/3D pose 모델, MMPose, MediaPipe, PyTorch, IK solver 설치는 Phase 1 이후로 분리한다.
+
+## 현재 운영 원칙
+
+- 외부 공개 없음.
+- 내부망 공개 없음.
+- nginx 사용 없음.
+- 개인 컴퓨터에서 `http://127.0.0.1:5173/`로만 사용.
+- API는 `127.0.0.1:3001`에서 실행.
+- 데이터는 `/Volumes/X31/golflog-data/golflog.json`에 저장.
+- Git 업로드는 하지 않음.
+
+## 단계별 진행 계획
+
+### Phase 0: 분석 골격과 UI
+
+목표: 실제 AI 모델 없이도 분석 API, 결과 스키마, 화면 흐름을 먼저 고정한다.
+
+- [x] 분석 결과 TypeScript/Zod 스키마 추가
+- [x] `POST /api/analysis` mock 분석 생성 API 추가
+- [x] `GET /api/analysis/{analysis_id}` 결과 조회 API 추가
+- [x] `GET /api/analysis/{analysis_id}/status` 상태 조회 API 추가
+- [x] `GET /api/analysis/{analysis_id}/frames/{frame}` 프레임 조회 API 추가
+- [x] 프론트엔드 `스윙 AI` 화면과 라우팅 추가
+- [x] 영상 선택, 클럽, 촬영 각도, 주 사용 손 입력 UI 추가
+- [x] mock skeleton, club line overlay 표시
+- [x] mock biomechanical summary, phase, recommendation 표시
+
+남은 보완:
+
+- [ ] 실제 영상 바이너리 업로드 저장 구조 추가
+- [ ] 분석 기록 목록과 이전 결과 다시 열기
+- [ ] 프레임 seek와 overlay 동기화
+
+### Phase 1: 2D Golfer + Club Pose
+
+목표: 영상에서 사람 keypoint와 클럽 keypoint를 추출한다.
+
+- MediaPipe Pose baseline부터 시작한다.
+- 클럽 head/grip 검출은 초기에는 휴리스틱 또는 수동 보정 가능 구조로 둔다.
+- 모델 산출물은 Phase 0의 `pose2dFrames` JSON에 맞춘다.
+- Python 분석 서비스가 필요해지면 Node API 뒤에 로컬 worker로 붙인다.
+
+완료 기준:
+
+- frame별 body keypoint 저장
+- club grip/head 추정 저장
+- overlay가 실제 추정값으로 표시
+
+### Phase 2: Swing Phase Segmentation
+
+목표: Address, Takeaway, Top, Downswing, Impact, Finish 등 이벤트를 자동 분할한다.
+
+- 초기에는 pose/club trajectory rule 기반으로 구현한다.
+- 이후 GolfDB/SwingNet 계열 모델로 교체한다.
+- 출력은 Phase 0의 `phases` JSON에 맞춘다.
+
+### Phase 3: 3D Pose Estimation
+
+목표: 2D pose를 3D skeleton으로 복원한다.
+
+- 단일 카메라부터 시작한다.
+- 가능하면 GolfPose-3D, VideoPose3D, MixSTE 계열을 검토한다.
+- 2-view 촬영은 카메라 보정 UI가 필요하므로 후순위로 둔다.
+
+### Phase 4: Body Profile & ROM
+
+목표: 사용자의 키, 신체 비율, 관절 가동범위를 추천 조건에 반영한다.
+
+- 키와 segment ratio를 사용자 프로필과 연결한다.
+- ROM 입력 화면을 추가한다.
+- 추천 rule에서 ROM constraint를 참조한다.
+
+### Phase 5: Biomechanical Feature Engine
+
+목표: head sway, pelvis sway, shoulder turn, x-factor, club path, balance risk 등을 계산한다.
+
+- feature 계산은 독립 패키지로 분리 가능하게 만든다.
+- 리포트와 추천은 같은 feature JSON을 참조한다.
+
+### Phase 6: Recommendation Engine
+
+목표: 단순 비교가 아니라 사용자 몸 기준으로 권장 범위를 제안한다.
+
+- 초기에는 rule-based로 구현한다.
+- 각 추천은 phase, metric, value, drill을 포함한다.
+- 이후 사용자별 개선 추세를 반영한다.
+
+### Phase 7 이후: Retargeting, IK, Ghost Swing
+
+목표: 상급자 reference swing을 사용자 골격과 ROM에 맞춰 변환하고 ghost swing overlay를 제공한다.
+
+- reference swing library 필요
+- segment length normalization 필요
+- ROM violation penalty 필요
+- IK solver 도입 필요
+
+## 검증 결과
+
+- `npm run build` 통과.
+- 로컬 API LaunchAgent 재시작 완료.
+- 임시 테스트 API에서 회원 등록 후 `POST /api/analysis` 201 응답 확인.
+- `GET /api/analysis/{analysis_id}/status` 200 응답 확인.
+- `GET /api/analysis/{analysis_id}/frames/{frame}` 200 응답 확인.
+- `http://127.0.0.1:5173/swing-ai` 응답 확인.
+
+## 다음 실행 순서
+
+1. 실제 영상 바이너리 저장 방식 결정
+2. 분석 기록 목록과 이전 결과 재열기 구현
+3. Phase 1용 Python worker 디렉터리와 실제 pose 산출 JSON 설계
+4. MediaPipe baseline으로 `pose2dFrames` 실제 생성

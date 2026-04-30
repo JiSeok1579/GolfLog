@@ -1,5 +1,5 @@
 import { NavLink } from "react-router-dom";
-import { MonitorUp, Scale } from "lucide-react";
+import { MonitorPlay, Scale } from "lucide-react";
 import { Card } from "../components/ui/Card";
 import { StatCard } from "../components/ui/StatCard";
 import { Chip } from "../components/ui/Chip";
@@ -89,7 +89,7 @@ export function DashboardPage() {
             {text(language, "체중", "Weight")}
           </NavLink>
           <NavLink className="button button-primary" to="/screen-golf">
-            <MonitorUp size={16} />
+            <MonitorPlay size={16} />
             {text(language, "스크린 기록", "Screen Record")}
           </NavLink>
         </div>

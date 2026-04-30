@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "https://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.golflog.api</string>
+
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/zsh</string>
+    <string>-lc</string>
+    <string>exec /usr/bin/env GOLFLOG_API_PORT=3001 GOLFLOG_DATA_FILE=/Volumes/X31/golflog-data/golflog.json /opt/homebrew/bin/node /Volumes/X31/golflog/server/server.js</string>
+  </array>
+
+  <key>WorkingDirectory</key>
+  <string>/tmp</string>
+
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>GOLFLOG_API_PORT</key>
+    <string>3001</string>
+    <key>GOLFLOG_DATA_FILE</key>
+    <string>/Volumes/X31/golflog-data/golflog.json</string>
+  </dict>
+
+  <key>RunAtLoad</key>
+  <true/>
+  <key>KeepAlive</key>
+  <true/>
+
+  <key>StandardOutPath</key>
+  <string>/tmp/golflog-api.out.log</string>
+  <key>StandardErrorPath</key>
+  <string>/tmp/golflog-api.err.log</string>
+</dict>
+</plist>

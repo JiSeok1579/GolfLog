@@ -24,8 +24,8 @@
   --w-fill-2: #1f3d45;
   --w-fill-3: #2d5661;
   --w-fill-4: #5fb0bd;
-  --font-sans: "IBM Plex Sans KR", "IBM Plex Sans", system-ui, sans-serif;
-  --font-mono: "IBM Plex Mono", ui-monospace, monospace;
-  --font-display: "Bebas Neue", "IBM Plex Sans", system-ui, sans-serif;
+  --font-sans: "IBM Plex Sans KR", "IBM Plex Sans", "Apple SD Gothic Neo", "Noto Sans KR", system-ui, sans-serif;
+  --font-mono: "IBM Plex Mono", "IBM Plex Sans KR", "Apple SD Gothic Neo", "Noto Sans KR", ui-monospace, monospace;
+  --font-display: "Bebas Neue", "IBM Plex Sans KR", "IBM Plex Sans", "Apple SD Gothic Neo", "Noto Sans KR", system-ui, sans-serif;
   --font-hand: "Caveat", cursive;
 }

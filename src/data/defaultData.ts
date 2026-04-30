@@ -7,6 +7,7 @@ export function createInitialData(): AppData {
     profile: {
       id: "profile-jin",
       name: "진",
+      phone: "",
       heightCm: 175,
       birthYear: 1991,
       distanceUnit: "m",

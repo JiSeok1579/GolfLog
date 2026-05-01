@@ -5,6 +5,7 @@ import { Chip } from "../ui/Chip";
 import type { SwingAnalysisResult, SwingPhaseName, SwingRecommendation } from "../../data/schema";
 
 type Language = "ko" | "en";
+type RecommendationConfidenceLevel = NonNullable<SwingRecommendation["confidence"]>["level"];
 
 function label(language: Language, ko: string, en: string) {
   return language === "ko" ? ko : en;
@@ -19,6 +20,29 @@ function recommendationEvidence(recommendation: SwingRecommendation) {
     return Object.entries(recommendation.evidenceMetrics);
   }
   return [[recommendation.metric, recommendation.value]];
+}
+
+function confidenceTone(level: RecommendationConfidenceLevel) {
+  if (level === "high") return "fairway";
+  if (level === "low") return "accent";
+  return undefined;
+}
+
+function recommendationConfidence(recommendation: SwingRecommendation, analysis: SwingAnalysisResult): NonNullable<SwingRecommendation["confidence"]> {
+  if (recommendation.confidence) return recommendation.confidence;
+  const quality = analysis.analysisQuality;
+  if (quality?.isFallback) {
+    return {
+      level: "low",
+      reason: "Fallback or sample analysis is not treated as real coaching evidence.",
+      score: 0,
+    };
+  }
+  return {
+    level: "moderate",
+    reason: "This older analysis does not include detailed recommendation confidence signals.",
+    score: Math.round((quality?.poseConfidence ?? 0.5) * 100),
+  };
 }
 
 export function RecommendationCards({
@@ -44,6 +68,7 @@ export function RecommendationCards({
       <div className="swing-recommendation-list">
         {analysis.recommendations.map((recommendation) => {
           const range = recommendation.overlayFrameRange;
+          const confidence = recommendationConfidence(recommendation, analysis);
           return (
             <article data-severity={recommendation.severity} key={recommendation.id}>
               <div className="swing-recommendation-head">
@@ -51,9 +76,12 @@ export function RecommendationCards({
                   {phaseLabel(recommendation.phase)}
                   {range ? ` · ${range[0]}-${range[1]}f` : ""}
                 </span>
-                <Chip tone={recommendation.severity === "risk" || recommendation.severity === "warning" ? "accent" : undefined}>
-                  {recommendation.severity}
-                </Chip>
+                <div className="recommendation-badges">
+                  <Chip tone={recommendation.severity === "risk" || recommendation.severity === "warning" ? "accent" : undefined}>
+                    {recommendation.severity}
+                  </Chip>
+                  <Chip tone={confidenceTone(confidence.level)}>{confidence.level} · {confidence.score}% confidence</Chip>
+                </div>
               </div>
               <h3>{recommendation.title}</h3>
               <div className="recommendation-evidence">
@@ -77,6 +105,7 @@ export function RecommendationCards({
                   <p>{recommendation.drill}</p>
                 </div>
               </div>
+              <p className="recommendation-confidence-note">{confidence.reason}</p>
               {recommendation.safetyNote ? <p className="recommendation-safety">{recommendation.safetyNote}</p> : null}
               <Button className="recommendation-phase-button" onClick={() => onViewPhase(recommendation.phase)} type="button" variant="secondary">
                 <ClipboardCheck size={16} />

@@ -44,6 +44,24 @@ function clubPathScore(clubPath) {
   return 76;
 }
 
+function scoreInput(label, value, unit, source) {
+  return {
+    label,
+    source,
+    value: Number.isFinite(value) ? round(value, 2) : String(value ?? "unknown"),
+    ...(unit ? { unit } : {}),
+  };
+}
+
+function scoreEvidenceItem({ formula, inputs, note, score }) {
+  return {
+    formula,
+    inputs,
+    note,
+    score,
+  };
+}
+
 function point(frame, name, minScore = 0.35) {
   const match = frame?.keypoints?.find((item) => item.name === name);
   return match && match.score >= minScore ? match : null;
@@ -192,7 +210,136 @@ export function computeCoachScores({ analysisQuality, features, scores }) {
     takeaway: averageScores([scores?.backswing, bodyMovementScores.armPath, bodyMovementScores.headStability]),
   };
 
-  return { bodyMovementScores, phaseScores };
+  const proxyNote = "Single-camera 2D proxy score; use with video review and ball-flight records, not as a definitive biomechanics diagnosis.";
+  const scoreEvidence = {
+    bodyMovementScores: {
+      armPath: scoreEvidenceItem({
+        formula: "Higher score when the lead arm bend proxy at the top is lower.",
+        inputs: [scoreInput("left_arm_bend_at_top_proxy", leftArmBend, "deg", "pose keypoints")],
+        note: proxyNote,
+        score: bodyMovementScores.armPath,
+      }),
+      balance: scoreEvidenceItem({
+        formula: "Reuses the existing balance score from the current 2D analysis.",
+        inputs: [scoreInput("balance_score", scores?.balance ?? 0, undefined, "existing scores")],
+        note: proxyNote,
+        score: bodyMovementScores.balance,
+      }),
+      headStability: scoreEvidenceItem({
+        formula: "Higher score when horizontal head sway across analyzed frames is lower.",
+        inputs: [scoreInput("head_sway_proxy", headSway, "% frame width", "pose keypoints")],
+        note: proxyNote,
+        score: bodyMovementScores.headStability,
+      }),
+      hipRotation: scoreEvidenceItem({
+        formula: "Scores hip turn proxy against the current 2D target range.",
+        inputs: [scoreInput("hip_turn_proxy", hipTurn, "deg", "pose keypoints")],
+        note: proxyNote,
+        score: bodyMovementScores.hipRotation,
+      }),
+      shoulderRotation: scoreEvidenceItem({
+        formula: "Scores shoulder turn proxy against the current 2D target range.",
+        inputs: [scoreInput("shoulder_turn_proxy", shoulderTurn, "deg", "pose keypoints")],
+        note: proxyNote,
+        score: bodyMovementScores.shoulderRotation,
+      }),
+      spineAngleMaintenance: scoreEvidenceItem({
+        formula: "Scores address spine angle proxy against the current setup range.",
+        inputs: [scoreInput("address_spine_angle_proxy", spineAngle, "deg", "pose keypoints")],
+        note: proxyNote,
+        score: bodyMovementScores.spineAngleMaintenance,
+      }),
+      tempo: scoreEvidenceItem({
+        formula: "Higher score when tempo ratio is closer to the current 3.0:1 target.",
+        inputs: [scoreInput("tempo_ratio", tempoRatio, ":1", "phase timing")],
+        note: proxyNote,
+        score: bodyMovementScores.tempo,
+      }),
+      weightShift: scoreEvidenceItem({
+        formula: "Scores pelvis sway proxy against a conservative 2D weight-shift target.",
+        inputs: [scoreInput("pelvis_sway_proxy", pelvisSway, "% frame width", "pose keypoints")],
+        note: proxyNote,
+        score: bodyMovementScores.weightShift,
+      }),
+    },
+    phaseScores: {
+      address: scoreEvidenceItem({
+        formula: "Average of setup score, spine angle maintenance, and pose confidence.",
+        inputs: [
+          scoreInput("setup_score", scores?.setup ?? 0, undefined, "existing scores"),
+          scoreInput("spine_angle_maintenance", bodyMovementScores.spineAngleMaintenance, undefined, "bodyMovementScores"),
+          scoreInput("pose_confidence", confidenceScore, undefined, "analysisQuality"),
+        ],
+        note: proxyNote,
+        score: phaseScores.address,
+      }),
+      backswingTop: scoreEvidenceItem({
+        formula: "Average of backswing score, shoulder rotation, arm path, and head stability.",
+        inputs: [
+          scoreInput("backswing_score", scores?.backswing ?? 0, undefined, "existing scores"),
+          scoreInput("shoulder_rotation", bodyMovementScores.shoulderRotation, undefined, "bodyMovementScores"),
+          scoreInput("arm_path", bodyMovementScores.armPath, undefined, "bodyMovementScores"),
+          scoreInput("head_stability", bodyMovementScores.headStability, undefined, "bodyMovementScores"),
+        ],
+        note: proxyNote,
+        score: phaseScores.backswingTop,
+      }),
+      downswing: scoreEvidenceItem({
+        formula: "Average of impact score, hip rotation, tempo, and club path proxy.",
+        inputs: [
+          scoreInput("impact_score", scores?.impact ?? 0, undefined, "existing scores"),
+          scoreInput("hip_rotation", bodyMovementScores.hipRotation, undefined, "bodyMovementScores"),
+          scoreInput("tempo", bodyMovementScores.tempo, undefined, "bodyMovementScores"),
+          scoreInput("club_path_proxy", pathScore, undefined, "club path estimate"),
+        ],
+        note: proxyNote,
+        score: phaseScores.downswing,
+      }),
+      finish: scoreEvidenceItem({
+        formula: "Average of balance score, movement balance, and head stability.",
+        inputs: [
+          scoreInput("balance_score", scores?.balance ?? 0, undefined, "existing scores"),
+          scoreInput("movement_balance", bodyMovementScores.balance, undefined, "bodyMovementScores"),
+          scoreInput("head_stability", bodyMovementScores.headStability, undefined, "bodyMovementScores"),
+        ],
+        note: proxyNote,
+        score: phaseScores.finish,
+      }),
+      followThrough: scoreEvidenceItem({
+        formula: "Average of balance score, hip rotation, and weight-shift proxy.",
+        inputs: [
+          scoreInput("balance_score", scores?.balance ?? 0, undefined, "existing scores"),
+          scoreInput("hip_rotation", bodyMovementScores.hipRotation, undefined, "bodyMovementScores"),
+          scoreInput("weight_shift", bodyMovementScores.weightShift, undefined, "bodyMovementScores"),
+        ],
+        note: proxyNote,
+        score: phaseScores.followThrough,
+      }),
+      impact: scoreEvidenceItem({
+        formula: "Average of impact score, head stability, club path proxy, and pose confidence.",
+        inputs: [
+          scoreInput("impact_score", scores?.impact ?? 0, undefined, "existing scores"),
+          scoreInput("head_stability", bodyMovementScores.headStability, undefined, "bodyMovementScores"),
+          scoreInput("club_path_proxy", pathScore, undefined, "club path estimate"),
+          scoreInput("pose_confidence", confidenceScore, undefined, "analysisQuality"),
+        ],
+        note: proxyNote,
+        score: phaseScores.impact,
+      }),
+      takeaway: scoreEvidenceItem({
+        formula: "Average of backswing score, arm path, and head stability.",
+        inputs: [
+          scoreInput("backswing_score", scores?.backswing ?? 0, undefined, "existing scores"),
+          scoreInput("arm_path", bodyMovementScores.armPath, undefined, "bodyMovementScores"),
+          scoreInput("head_stability", bodyMovementScores.headStability, undefined, "bodyMovementScores"),
+        ],
+        note: proxyNote,
+        score: phaseScores.takeaway,
+      }),
+    },
+  };
+
+  return { bodyMovementScores, phaseScores, scoreEvidence };
 }
 
 export function clubHeadPathProxy(frames, impactPhase, dominantHand) {

@@ -1,9 +1,10 @@
 import { Activity, ListChecks } from "lucide-react";
 import { Card } from "../ui/Card";
-import type { SwingAnalysisResult } from "../../data/schema";
+import type { SwingAnalysisResult, SwingScoreEvidence } from "../../data/schema";
 import { qualityForAnalysis } from "./AnalysisQualityBadge";
 
 type Language = "ko" | "en";
+type ScoreEvidenceItem = NonNullable<NonNullable<SwingScoreEvidence["phaseScores"]>[string]>;
 
 const phaseRows = [
   ["address", "Address"],
@@ -35,6 +36,69 @@ function scoreValue(value: number | undefined, unavailable: boolean) {
   return typeof value === "number" ? value : "--";
 }
 
+function inputValue(input: ScoreEvidenceItem["inputs"][number]) {
+  const value = typeof input.value === "number" ? input.value.toLocaleString() : input.value;
+  return `${value}${input.unit ? ` ${input.unit}` : ""}`;
+}
+
+function ScoreEvidenceDetails({
+  evidence,
+  language,
+  unavailable,
+}: {
+  evidence?: ScoreEvidenceItem;
+  language: Language;
+  unavailable: boolean;
+}) {
+  if (unavailable) {
+    return <p className="coach-score-evidence-empty">{label(language, "fallback/예시 분석에서는 점수 근거를 표시하지 않습니다.", "Score evidence is unavailable for fallback/sample analysis.")}</p>;
+  }
+  if (!evidence) {
+    return <p className="coach-score-evidence-empty">{label(language, "이전 분석 결과에는 점수 근거가 저장되어 있지 않습니다.", "This older analysis does not include score evidence.")}</p>;
+  }
+  return (
+    <div className="coach-score-evidence-body">
+      <p>{evidence.formula}</p>
+      <dl>
+        {evidence.inputs.map((input) => (
+          <div key={`${input.label}-${input.source || ""}`}>
+            <dt>{input.label}</dt>
+            <dd>
+              <strong>{inputValue(input)}</strong>
+              {input.source ? <small>{input.source}</small> : null}
+            </dd>
+          </div>
+        ))}
+      </dl>
+      {evidence.note ? <p className="coach-score-evidence-note">{evidence.note}</p> : null}
+    </div>
+  );
+}
+
+function ScoreRow({
+  evidence,
+  labelText,
+  unavailable,
+  value,
+  language,
+}: {
+  evidence?: ScoreEvidenceItem;
+  labelText: string;
+  unavailable: boolean;
+  value?: number;
+  language: Language;
+}) {
+  return (
+    <details className="coach-score-item" data-unavailable={unavailable ? "true" : undefined}>
+      <summary>
+        <span>{labelText}</span>
+        <strong>{scoreValue(value, unavailable)}</strong>
+      </summary>
+      <ScoreEvidenceDetails evidence={evidence} language={language} unavailable={unavailable} />
+    </details>
+  );
+}
+
 export function ScoreBreakdownGrid({ analysis, language }: { analysis: SwingAnalysisResult; language: Language }) {
   const quality = qualityForAnalysis(analysis);
   const unavailable = quality.isFallback;
@@ -53,10 +117,14 @@ export function ScoreBreakdownGrid({ analysis, language }: { analysis: SwingAnal
         </div>
         <div className="coach-score-list">
           {phaseRows.map(([key, title]) => (
-            <div data-unavailable={unavailable ? "true" : undefined} key={key}>
-              <span>{title}</span>
-              <strong>{scoreValue(analysis.phaseScores?.[key], unavailable)}</strong>
-            </div>
+            <ScoreRow
+              evidence={analysis.scoreEvidence?.phaseScores?.[key]}
+              key={key}
+              labelText={title}
+              language={language}
+              unavailable={unavailable}
+              value={analysis.phaseScores?.[key]}
+            />
           ))}
         </div>
         {missingPhaseScores ? <p className="coach-score-note">{label(language, "이전 분석 결과에는 구간별 점수가 저장되어 있지 않습니다.", "This older analysis does not include phase scores.")}</p> : null}
@@ -72,10 +140,14 @@ export function ScoreBreakdownGrid({ analysis, language }: { analysis: SwingAnal
         </div>
         <div className="coach-score-list">
           {bodyRows.map(([key, title]) => (
-            <div data-unavailable={unavailable ? "true" : undefined} key={key}>
-              <span>{title}</span>
-              <strong>{scoreValue(analysis.bodyMovementScores?.[key], unavailable)}</strong>
-            </div>
+            <ScoreRow
+              evidence={analysis.scoreEvidence?.bodyMovementScores?.[key]}
+              key={key}
+              labelText={title}
+              language={language}
+              unavailable={unavailable}
+              value={analysis.bodyMovementScores?.[key]}
+            />
           ))}
         </div>
         <p className="coach-score-note">

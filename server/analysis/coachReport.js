@@ -1,5 +1,7 @@
 import { computeCoachScores } from "./metrics.js";
 
+const historicalMetricKeys = ["carryM", "totalM", "sideDeviationM", "headSpeed", "launchAngle"];
+
 function numberOrNull(value) {
   const number = Number(value);
   return Number.isFinite(number) ? number : null;
@@ -24,7 +26,7 @@ function sameClubShots(appData, club) {
       sessionDate: sessions.get(shot.sessionId)?.date || "",
     }))
     .filter((shot) => {
-      return ["carryM", "totalM", "sideDeviationM", "headSpeed", "launchAngle"].some((key) => numberOrNull(shot[key]) !== null);
+      return historicalMetricKeys.some((key) => numberOrNull(shot[key]) !== null);
     })
     .sort((a, b) => String(b.sessionDate).localeCompare(String(a.sessionDate)))
     .slice(0, 20);
@@ -37,9 +39,8 @@ function dataSufficiency(sampleSize) {
 }
 
 function fieldCoverage(shots) {
-  const fields = ["carryM", "totalM", "sideDeviationM", "headSpeed", "launchAngle"];
   if (shots.length === 0) return 0;
-  const coverage = fields.map((field) => shots.filter((shot) => numberOrNull(shot[field]) !== null).length / shots.length);
+  const coverage = historicalMetricKeys.map((field) => shots.filter((shot) => numberOrNull(shot[field]) !== null).length / shots.length);
   return average(coverage) || 0;
 }
 
@@ -56,6 +57,100 @@ function currentPathLabel(clubPath) {
   if (clubPath === "in-to-out") return "in-to-out";
   if (clubPath === "out-to-in") return "out-to-in";
   return "unknown";
+}
+
+function historicalMetricsUsed(shots) {
+  return historicalMetricKeys.filter((key) => shots.some((shot) => numberOrNull(shot[key]) !== null));
+}
+
+function historicalDateRange(shots) {
+  const dates = shots.map((shot) => shot.sessionDate).filter(Boolean).sort();
+  if (dates.length === 0) return undefined;
+  return {
+    end: dates[dates.length - 1],
+    start: dates[0],
+  };
+}
+
+function historicalRecord(shot) {
+  return historicalMetricKeys.reduce(
+    (record, key) => {
+      const value = numberOrNull(shot[key]);
+      if (value !== null) record[key] = value;
+      return record;
+    },
+    {
+      date: shot.sessionDate || "",
+      id: shot.id,
+      sessionId: shot.sessionId,
+    },
+  );
+}
+
+function isClubPathOrImpactRecommendation(recommendation) {
+  const text = [
+    recommendation.id,
+    recommendation.metric,
+    recommendation.title,
+    recommendation.detail,
+    recommendation.reason,
+    recommendation.suggestion,
+    recommendation.value,
+  ]
+    .filter(Boolean)
+    .join(" ")
+    .toLowerCase();
+  return recommendation.phase === "impact" || text.includes("club_path") || text.includes("club path") || text.includes("club") || text.includes("impact");
+}
+
+function recommendationConfidence(recommendation, analysisQuality) {
+  const poseConfidence = numberOrNull(analysisQuality?.poseConfidence) ?? 0;
+  const analyzedFrames = numberOrNull(analysisQuality?.analyzedFrameCount) ?? 0;
+  const detectedFrames = numberOrNull(analysisQuality?.clubDetectedFrames) ?? 0;
+  const clubDetectionRate = analyzedFrames > 0 ? detectedFrames / analyzedFrames : numberOrNull(analysisQuality?.clubDetectionRate) ?? 0;
+  const isClubPathRelated = isClubPathOrImpactRecommendation(recommendation);
+
+  if (analysisQuality?.isFallback) {
+    return {
+      level: "low",
+      reason: "Fallback or sample analysis is not treated as real coaching evidence.",
+      score: 0,
+      signals: {
+        analyzedFrames,
+        clubDetectedFrames: detectedFrames,
+        clubDetectionRate: Number(clubDetectionRate.toFixed(3)),
+        poseConfidence: Number(poseConfidence.toFixed(3)),
+      },
+    };
+  }
+
+  let score = roundScore((poseConfidence * 0.72 + (isClubPathRelated ? clubDetectionRate : poseConfidence) * 0.28) * 100);
+  let reason = `Pose confidence is ${(poseConfidence * 100).toFixed(0)}%.`;
+  if (isClubPathRelated) {
+    reason = `Pose confidence is ${(poseConfidence * 100).toFixed(0)}%; club detected in ${detectedFrames}/${analyzedFrames} analyzed frames.`;
+    if (clubDetectionRate < 0.35) score = Math.min(score, 44);
+    else if (clubDetectionRate < 0.55) score = Math.min(score, 62);
+  }
+
+  const level = score >= 75 ? "high" : score >= 50 ? "moderate" : "low";
+  return {
+    level,
+    reason,
+    score,
+    signals: {
+      analyzedFrames,
+      clubDetectedFrames: detectedFrames,
+      clubDetectionRate: Number(clubDetectionRate.toFixed(3)),
+      poseConfidence: Number(poseConfidence.toFixed(3)),
+    },
+  };
+}
+
+function withRecommendationConfidence(recommendations, analysisQuality) {
+  return (recommendations || []).map((recommendation) => ({
+    ...recommendation,
+    confidence: recommendation.confidence || recommendationConfidence(recommendation, analysisQuality),
+  }));
 }
 
 function buildHistoricalSummary({ analysis, sampleSize, sufficiency }) {
@@ -86,8 +181,10 @@ export function buildHistoricalComparison({ analysis, appData }) {
       baselineType,
       club: analysis.input.club,
       dataSufficiency: sufficiency,
+      metricsUsed: [],
       negativeMatches: ["Fallback or generated sample analysis is not compared against personal history."],
       positiveMatches,
+      recordsUsed: [],
       sampleSize,
       summary: buildHistoricalSummary({ analysis, sampleSize, sufficiency }),
     };
@@ -150,8 +247,11 @@ export function buildHistoricalComparison({ analysis, appData }) {
     baselineType,
     club: analysis.input.club,
     dataSufficiency: sufficiency,
+    ...(historicalDateRange(shots) ? { dateRange: historicalDateRange(shots) } : {}),
+    metricsUsed: historicalMetricsUsed(shots),
     negativeMatches: negativeMatches.slice(0, 4),
     positiveMatches: positiveMatches.slice(0, 4),
+    recordsUsed: shots.map(historicalRecord),
     sampleSize,
     ...(similarityScore !== undefined ? { similarityScore } : {}),
     summary: buildHistoricalSummary({ analysis, sampleSize, sufficiency }),
@@ -168,8 +268,12 @@ export function withCoachReport(analysis, appData) {
     ...analysis,
     ...coachScores,
   };
-  return {
+  const analysisWithRecommendations = {
     ...analysisWithScores,
-    historicalComparison: buildHistoricalComparison({ analysis: analysisWithScores, appData }),
+    recommendations: withRecommendationConfidence(analysisWithScores.recommendations, analysisWithScores.analysisQuality),
+  };
+  return {
+    ...analysisWithRecommendations,
+    historicalComparison: buildHistoricalComparison({ analysis: analysisWithRecommendations, appData }),
   };
 }

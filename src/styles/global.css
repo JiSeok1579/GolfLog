@@ -1342,6 +1342,8 @@ main {
 .coach-summary-chips,
 .coach-score-list span,
 .historical-match-grid span,
+.historical-metrics-used > span,
+.historical-record-list > span,
 .coach-score-note {
   color: var(--w-muted);
   font-family: var(--font-mono);
@@ -1630,21 +1632,40 @@ main {
   gap: 8px;
 }
 
-.coach-score-list div {
-  align-items: center;
+.coach-score-item {
   border-bottom: 1px solid var(--w-line);
-  display: flex;
-  gap: 10px;
-  justify-content: space-between;
   padding-bottom: 8px;
 }
 
-.coach-score-list div:last-child {
+.coach-score-item:last-child {
   border-bottom: 0;
   padding-bottom: 0;
 }
 
-.coach-score-list div[data-unavailable="true"] {
+.coach-score-item summary {
+  align-items: center;
+  display: flex;
+  gap: 10px;
+  justify-content: space-between;
+  list-style: none;
+}
+
+.coach-score-item summary::-webkit-details-marker {
+  display: none;
+}
+
+.coach-score-item summary {
+  cursor: pointer;
+}
+
+.coach-score-item summary:hover,
+.coach-score-item summary:focus-visible {
+  color: var(--w-ink);
+  outline: 2px solid rgba(191, 109, 74, 0.14);
+  outline-offset: 4px;
+}
+
+.coach-score-item[data-unavailable="true"] {
   opacity: 0.62;
 }
 
@@ -1657,6 +1678,64 @@ main {
 .coach-score-note {
   line-height: 1.45;
   margin: 12px 0 0;
+}
+
+.coach-score-evidence-body,
+.coach-score-evidence-empty {
+  background: var(--w-paper-2);
+  border: 1px solid var(--w-line);
+  border-radius: 7px;
+  color: var(--w-ink-soft);
+  line-height: 1.5;
+  margin: 9px 0 0;
+  padding: 10px;
+}
+
+.coach-score-evidence-body p,
+.coach-score-evidence-empty {
+  margin: 0;
+}
+
+.coach-score-evidence-body dl {
+  display: grid;
+  gap: 7px;
+  margin: 9px 0 0;
+}
+
+.coach-score-evidence-body dl div {
+  align-items: center;
+  display: flex;
+  gap: 10px;
+  justify-content: space-between;
+}
+
+.coach-score-evidence-body dt {
+  color: var(--w-muted);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  text-transform: uppercase;
+}
+
+.coach-score-evidence-body dd {
+  display: grid;
+  gap: 2px;
+  margin: 0;
+  text-align: right;
+}
+
+.coach-score-evidence-body dd strong {
+  color: var(--w-ink);
+}
+
+.coach-score-evidence-body dd small,
+.coach-score-evidence-note {
+  color: var(--w-muted);
+  font-family: var(--font-mono);
+  font-size: 11px;
+}
+
+.coach-score-evidence-note {
+  margin-top: 9px !important;
 }
 
 .historical-comparison-card {
@@ -1673,6 +1752,98 @@ main {
   color: var(--w-ink-soft);
   line-height: 1.55;
   margin: 12px 0;
+}
+
+.historical-detail-panel {
+  background: var(--w-paper-2);
+  border: 1px solid var(--w-line);
+  border-radius: 7px;
+  margin: 0 0 12px;
+  padding: 10px 12px;
+}
+
+.historical-detail-panel summary {
+  color: var(--w-ink);
+  cursor: pointer;
+  font-weight: 700;
+}
+
+.historical-detail-grid {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  margin-top: 12px;
+}
+
+.historical-detail-grid div {
+  border: 1px solid var(--w-line);
+  border-radius: 7px;
+  display: grid;
+  gap: 5px;
+  padding: 10px;
+}
+
+.historical-detail-grid span,
+.historical-metrics-used > span,
+.historical-record-list > span {
+  color: var(--w-muted);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  text-transform: uppercase;
+}
+
+.historical-detail-grid strong {
+  color: var(--w-ink);
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
+
+.historical-metrics-used,
+.historical-record-list {
+  display: grid;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.historical-metrics-used div {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+}
+
+.historical-metrics-used p {
+  color: var(--w-ink-soft);
+  margin: 0;
+}
+
+.historical-record-list {
+  max-height: 260px;
+  overflow: auto;
+}
+
+.historical-record-row {
+  border-top: 1px solid var(--w-line);
+  display: grid;
+  gap: 3px;
+  padding-top: 8px;
+}
+
+.historical-record-row strong {
+  color: var(--w-ink);
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
+
+.historical-record-row small {
+  color: var(--w-muted);
+  font-family: var(--font-mono);
+  font-size: 11px;
+}
+
+.historical-record-row p {
+  color: var(--w-ink-soft);
+  line-height: 1.45;
+  margin: 0;
 }
 
 .historical-match-grid {
@@ -1916,6 +2087,14 @@ main {
   justify-content: space-between;
 }
 
+.recommendation-badges {
+  display: flex;
+  flex: 0 0 auto;
+  flex-wrap: wrap;
+  gap: 7px;
+  justify-content: flex-end;
+}
+
 .swing-recommendation-list h3 {
   color: var(--w-ink);
   font-size: 16px;
@@ -1963,6 +2142,17 @@ main {
 
 .recommendation-safety {
   color: var(--w-muted);
+}
+
+.recommendation-confidence-note {
+  background: var(--w-paper-2);
+  border: 1px solid var(--w-line);
+  border-radius: 7px;
+  color: var(--w-muted) !important;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  padding: 8px 9px;
+  text-transform: uppercase;
 }
 
 .recommendation-phase-button {
@@ -2152,6 +2342,7 @@ main {
 
   .coach-summary-grid,
   .coach-score-breakdown,
+  .historical-detail-grid,
   .historical-match-grid,
   .swing-ai-grid,
   .swing-result-grid {

@@ -5,9 +5,34 @@ import type { SwingAnalysisResult } from "../../data/schema";
 import { qualityForAnalysis } from "./AnalysisQualityBadge";
 
 type Language = "ko" | "en";
+type HistoricalRecord = NonNullable<NonNullable<SwingAnalysisResult["historicalComparison"]>["recordsUsed"]>[number];
 
 function label(language: Language, ko: string, en: string) {
   return language === "ko" ? ko : en;
+}
+
+const metricLabels: Record<string, string> = {
+  carryM: "Carry",
+  headSpeed: "Head speed",
+  launchAngle: "Launch",
+  sideDeviationM: "Side",
+  totalM: "Total",
+};
+
+function dateRangeLabel(comparison: NonNullable<SwingAnalysisResult["historicalComparison"]>, language: Language) {
+  if (!comparison.dateRange?.start && !comparison.dateRange?.end) return label(language, "기록 날짜 없음", "No record dates");
+  if (comparison.dateRange?.start === comparison.dateRange?.end) return comparison.dateRange.start;
+  return `${comparison.dateRange?.start || "?"} - ${comparison.dateRange?.end || "?"}`;
+}
+
+function recordMetrics(record: HistoricalRecord) {
+  return ["carryM", "totalM", "sideDeviationM", "headSpeed", "launchAngle"]
+    .filter((key) => typeof record[key as keyof typeof record] === "number")
+    .map((key) => {
+      const value = record[key as keyof typeof record];
+      const unit = key === "launchAngle" ? "deg" : key === "headSpeed" ? "" : "m";
+      return `${metricLabels[key]} ${String(value)}${unit ? unit : ""}`;
+    });
 }
 
 export function HistoricalComparisonCard({ analysis, language }: { analysis: SwingAnalysisResult; language: Language }) {
@@ -33,9 +58,51 @@ export function HistoricalComparisonCard({ analysis, language }: { analysis: Swi
               {comparison.baselineType}
             </Chip>
             <Chip>{comparison.sampleSize} samples</Chip>
+            <Chip>{dateRangeLabel(comparison, language)}</Chip>
             {typeof comparison.similarityScore === "number" ? <Chip tone="fairway">{comparison.similarityScore}% similarity</Chip> : null}
           </div>
           <p className="historical-summary">{comparison.summary}</p>
+          <details className="historical-detail-panel">
+            <summary>{label(language, "비교 근거 보기", "View comparison details")}</summary>
+            <div className="historical-detail-grid">
+              <div>
+                <span>{label(language, "샘플", "Sample")}</span>
+                <strong>{comparison.sampleSize}</strong>
+              </div>
+              <div>
+                <span>{label(language, "날짜 범위", "Date range")}</span>
+                <strong>{dateRangeLabel(comparison, language)}</strong>
+              </div>
+              <div>
+                <span>{label(language, "데이터 상태", "Data status")}</span>
+                <strong>{comparison.dataSufficiency}</strong>
+              </div>
+            </div>
+            <div className="historical-metrics-used">
+              <span>{label(language, "사용한 지표", "Metrics used")}</span>
+              <div>
+                {(comparison.metricsUsed || []).length > 0 ? (
+                  (comparison.metricsUsed || []).map((metric) => <Chip key={metric}>{metricLabels[metric] || metric}</Chip>)
+                ) : (
+                  <p>{label(language, "사용 가능한 같은 클럽 지표가 아직 부족합니다.", "Not enough same-club metrics are available yet.")}</p>
+                )}
+              </div>
+            </div>
+            {(comparison.recordsUsed || []).length > 0 ? (
+              <div className="historical-record-list">
+                <span>{label(language, "비교에 사용한 기록", "Records used")}</span>
+                {comparison.recordsUsed?.map((record) => (
+                  <div className="historical-record-row" key={record.id}>
+                    <strong>{record.date || label(language, "날짜 없음", "No date")}</strong>
+                    <small>{record.id}</small>
+                    <p>{recordMetrics(record).join(" · ")}</p>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="historical-empty">{label(language, "비교에 사용할 같은 클럽 기록이 아직 없습니다.", "No same-club records were available for comparison.")}</div>
+            )}
+          </details>
           <div className="historical-match-grid">
             <div>
               <span>{label(language, "일치/지원되는 부분", "Positive matches")}</span>

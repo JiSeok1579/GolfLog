@@ -62,7 +62,7 @@
 - [x] 손목, 어깨 폭, 클럽 종류, 주 사용 손, 스윙 진행률 기반 클럽 head/grip 휴리스틱 고도화
 - [x] MediaPipe 네이티브 크래시 격리 및 fallback pose job 지속 처리
 - [x] 전용 pose Python 환경 `.venv-pose` 우선 사용 및 `setup:pose`/`check:pose` 검증 스크립트 추가
-- [ ] MediaPipe 의존성 설치 후 실제 영상에서 keypoint 검증
+- [x] MediaPipe 의존성 설치 후 실제 영상에서 keypoint 검증
 - [ ] 실제 클럽 head/grip 전용 검출 모델 또는 보정 UI 추가
 
 예시 데이터 운영 원칙:
@@ -73,9 +73,10 @@
 - 모델 파일·가중치·샘플 영상·운영 데이터는 `NOTICE.md`, `docs/COPYRIGHT_AND_DATA_POLICY.md`, `npm run check:payload` 기준으로 관리한다.
 - 개인 실제 스윙이 생기기 전까지는 앱 내 예시 분석과 저장된 공개 샘플의 로컬 업로드로 UI/API 흐름을 검증한다.
 - 2026-05-01 기준 Python 3.13용 MediaPipe wheel은 `mp.solutions`가 노출되지 않아 기본 worker는 안전한 fallback pose로 UI/API를 검증한다.
-- 동일 환경에서 MediaPipe Tasks는 Metal graph 초기화 중 네이티브 fatal이 발생하므로, worker parent process가 이를 격리하고 fallback 결과를 저장한다.
-- MediaPipe Tasks 모델은 `/Volumes/X31/golflog-data/models/pose_landmarker_full.task`에 로컬 보관하며, 네이티브 런타임 안정화 후 명시적으로 켠다.
-- 실제 keypoint 검증은 `.venv-pose`에 Python 3.11 기반 MediaPipe runtime을 구성한 뒤 `npm run check:pose -- --require-real /path/to/swing.mp4`로 확인한다.
+- `.venv-pose`는 Python 3.11, `mediapipe==0.10.21`, `opencv-contrib-python==4.11.0.86`, `numpy==1.26.4` 조합으로 고정한다.
+- `/tmp/golfdb-test-video.mp4` 로컬 샘플 기준 `npm run check:pose -- --require-real /tmp/golfdb-test-video.mp4`가 `model=mediapipe`, `runtime=mediapipe_solutions`, `frames=44`, `fallbackReason=null`로 통과했다.
+- 제한된 샌드박스/비 GUI 셸에서는 macOS 네이티브 그래픽 런타임 제한 때문에 MediaPipe가 fallback으로 떨어질 수 있으므로, 실제 검증은 일반 로컬 실행 환경에서 확인한다.
+- MediaPipe Tasks 모델은 `/Volumes/X31/golflog-data/models/pose_landmarker_full.task`에 로컬 보관하며 Git에는 올리지 않는다. 현재 Phase 1 baseline은 Tasks가 아니라 `mp.solutions` 런타임이다.
 
 완료 기준:
 
@@ -147,7 +148,6 @@
 
 ## 다음 실행 순서
 
-1. Python 3.11 legacy `mp.solutions` 또는 Python 3.13 MediaPipe Tasks 중 안정적인 pose runtime 확정
-2. GolfDB 등 공개 샘플 영상에서 실제 keypoint 품질 확인
-3. 실제 클럽 head/grip 전용 검출 모델 또는 수동 보정 UI 추가
-4. phase별 추천 문구와 보정된 구간 기준 리포트 정합성 점검
+1. GolfDB 등 공개 샘플 영상에서 실제 keypoint 품질을 시각적으로 확인
+2. 실제 클럽 head/grip 전용 검출 모델 또는 수동 보정 UI 추가
+3. phase별 추천 문구와 보정된 구간 기준 리포트 정합성 점검

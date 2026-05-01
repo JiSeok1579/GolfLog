@@ -27,9 +27,20 @@ if [[ "$PYTHON_MAJOR_MINOR" != "3.11" ]]; then
   printf 'Warning: Python 3.11 is preferred for legacy MediaPipe mp.solutions. Continuing with %s.\n' "$PYTHON_MAJOR_MINOR" >&2
 fi
 
+clean_appledouble() {
+  if [[ -d "$POSE_VENV" ]]; then
+    find "$POSE_VENV" -name '._*' -type f -delete 2>/dev/null || true
+  fi
+}
+
 "$PYTHON_BIN" -m venv "$POSE_VENV"
+clean_appledouble
 "$POSE_VENV/bin/python" -m pip install --upgrade pip
-"$POSE_VENV/bin/python" -m pip install -r "$ROOT_DIR/workers/pose/requirements.txt"
+clean_appledouble
+"$POSE_VENV/bin/python" -m pip uninstall -y opencv-python opencv-python-headless || true
+clean_appledouble
+"$POSE_VENV/bin/python" -m pip install --force-reinstall -r "$ROOT_DIR/workers/pose/requirements.txt"
+clean_appledouble
 
 printf '\nPose runtime created at %s\n' "$POSE_VENV"
 printf 'Run npm run check:pose to verify the worker against a local sample video.\n'

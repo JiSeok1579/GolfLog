@@ -10,6 +10,7 @@ function defaultPython(rootDir) {
 export function runPoseWorker({ club, dominantHand, model = "mediapipe", outputPath, rootDir, timeoutMs = 180000, videoPath, viewAngle }) {
   const python = process.env.GOLFLOG_POSE_PYTHON || defaultPython(rootDir);
   const scriptPath = resolve(rootDir, "workers", "pose", "analyze_pose.py");
+  const runtime = process.env.GOLFLOG_POSE_RUNTIME || "auto";
   const args = [
     scriptPath,
     "--video",
@@ -18,6 +19,8 @@ export function runPoseWorker({ club, dominantHand, model = "mediapipe", outputP
     outputPath,
     "--model",
     model,
+    "--runtime",
+    runtime,
     "--view-angle",
     viewAngle,
     "--club-type",
@@ -25,6 +28,12 @@ export function runPoseWorker({ club, dominantHand, model = "mediapipe", outputP
     "--dominant-hand",
     dominantHand,
   ];
+  if (process.env.GOLFLOG_POSE_LANDMARKER_MODEL) {
+    args.push("--landmarker-model", process.env.GOLFLOG_POSE_LANDMARKER_MODEL);
+  }
+  if (process.env.GOLFLOG_POSE_MAX_FRAMES) {
+    args.push("--max-frames", process.env.GOLFLOG_POSE_MAX_FRAMES);
+  }
 
   return new Promise((resolveWorker, reject) => {
     const child = spawn(python, args, {

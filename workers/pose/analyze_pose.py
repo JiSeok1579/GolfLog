@@ -47,6 +47,179 @@ def midpoint(a, b):
     return [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2, min(a[2], b[2])]
 
 
+def clamp(value, low, high):
+    return max(low, min(high, value))
+
+
+def distance(a, b):
+    return math.hypot(a[0] - b[0], a[1] - b[1])
+
+
+def keypoint_xy(keypoints, name, min_score=0.2):
+    value = keypoints.get(name)
+    if not isinstance(value, list) or len(value) < 3 or value[2] < min_score:
+        return None
+    return (float(value[0]), float(value[1]))
+
+
+def segment_distance(point, start, end):
+    sx, sy = start
+    ex, ey = end
+    px, py = point
+    dx = ex - sx
+    dy = ey - sy
+    length_sq = dx * dx + dy * dy
+    if length_sq <= 0.001:
+        return distance(point, start), start
+    t = clamp(((px - sx) * dx + (py - sy) * dy) / length_sq, 0.0, 1.0)
+    projection = (sx + dx * t, sy + dy * t)
+    return distance(point, projection), projection
+
+
+def estimate_body_scale(keypoints, width, height):
+    left_shoulder = keypoint_xy(keypoints, "left_shoulder", min_score=0.15)
+    right_shoulder = keypoint_xy(keypoints, "right_shoulder", min_score=0.15)
+    if left_shoulder and right_shoulder:
+        return max(distance(left_shoulder, right_shoulder), width * 0.08)
+    return max(width * 0.12, height * 0.12, 80)
+
+
+def body_keypoint_points(keypoints):
+    names = [
+        "head",
+        "neck",
+        "left_shoulder",
+        "right_shoulder",
+        "left_elbow",
+        "right_elbow",
+        "left_hip",
+        "right_hip",
+        "left_knee",
+        "right_knee",
+    ]
+    return [point for point in (keypoint_xy(keypoints, name, min_score=0.15) for name in names) if point]
+
+
+def expanded_body_box(keypoints, body_scale, width, height):
+    points = body_keypoint_points(keypoints)
+    if not points:
+        return None
+    padding = body_scale * 0.28
+    return (
+        clamp(min(point[0] for point in points) - padding, 0, width),
+        clamp(min(point[1] for point in points) - padding, 0, height),
+        clamp(max(point[0] for point in points) + padding, 0, width),
+        clamp(max(point[1] for point in points) + padding, 0, height),
+    )
+
+
+def point_in_box(point, box):
+    if not box:
+        return False
+    return box[0] <= point[0] <= box[2] and box[1] <= point[1] <= box[3]
+
+
+def detect_club_from_frame(image, keypoints, frame_index, total_frames):
+    try:
+        import cv2
+    except Exception:
+        return None
+
+    left_wrist = keypoint_xy(keypoints, "left_wrist")
+    right_wrist = keypoint_xy(keypoints, "right_wrist")
+    if not left_wrist or not right_wrist:
+        return None
+
+    height, width = image.shape[:2]
+    grip = ((left_wrist[0] + right_wrist[0]) / 2, (left_wrist[1] + right_wrist[1]) / 2)
+    body_scale = estimate_body_scale(keypoints, width, height)
+    roi_radius = max(body_scale * 2.7, width * 0.16, height * 0.18, 120)
+    x1 = int(clamp(grip[0] - roi_radius, 0, width - 1))
+    y1 = int(clamp(grip[1] - roi_radius, 0, height - 1))
+    x2 = int(clamp(grip[0] + roi_radius, x1 + 1, width))
+    y2 = int(clamp(grip[1] + roi_radius, y1 + 1, height))
+    crop = image[y1:y2, x1:x2]
+    if crop.size == 0:
+        return None
+
+    gray = cv2.cvtColor(crop, cv2.COLOR_BGR2GRAY)
+    gray = cv2.GaussianBlur(gray, (3, 3), 0)
+    edges = cv2.Canny(gray, 55, 165)
+    min_line_length = int(max(body_scale * 0.55, 38))
+    max_line_gap = int(max(body_scale * 0.24, 12))
+    lines = cv2.HoughLinesP(
+        edges,
+        rho=1,
+        theta=math.pi / 180,
+        threshold=18,
+        minLineLength=min_line_length,
+        maxLineGap=max_line_gap,
+    )
+    if lines is None:
+        return None
+
+    grip_tolerance = max(body_scale * 0.42, 24)
+    expected_length = max(body_scale * 1.15, 70)
+    body_box = expanded_body_box(keypoints, body_scale, width, height)
+    body_points = body_keypoint_points(keypoints)
+    frame_progress = frame_index / max(total_frames - 1, 1)
+    best = None
+    for raw_line in lines:
+        lx1, ly1, lx2, ly2 = [float(value) for value in raw_line[0]]
+        start = (lx1 + x1, ly1 + y1)
+        end = (lx2 + x1, ly2 + y1)
+        line_length = distance(start, end)
+        if line_length < min_line_length:
+            continue
+
+        grip_distance, _ = segment_distance(grip, start, end)
+        if grip_distance > grip_tolerance:
+            continue
+
+        start_distance = distance(grip, start)
+        end_distance = distance(grip, end)
+        head = start if start_distance >= end_distance else end
+        head_distance = max(start_distance, end_distance)
+        if head_distance < expected_length * 0.45:
+            continue
+        nearest_body_distance = min((distance(head, point) for point in body_points), default=expected_length)
+        if nearest_body_distance < body_scale * 0.18:
+            continue
+
+        score = (
+            0.5 * clamp(head_distance / expected_length, 0.0, 1.0)
+            + 0.35 * (1.0 - clamp(grip_distance / grip_tolerance, 0.0, 1.0))
+            + 0.15 * clamp(line_length / expected_length, 0.0, 1.0)
+        )
+        if point_in_box(head, body_box):
+            score *= 0.55
+        if nearest_body_distance < body_scale * 0.42:
+            score *= clamp(nearest_body_distance / (body_scale * 0.42), 0.35, 1.0)
+        if frame_progress >= 0.56 and abs(head[1] - grip[1]) < body_scale * 0.32:
+            score *= 0.45
+        if not best or score > best["score"]:
+            best = {
+                "grip": grip,
+                "head": head,
+                "score": score,
+            }
+
+    if not best:
+        return None
+
+    return {
+        "grip": {
+            "x": round(best["grip"][0], 2),
+            "y": round(best["grip"][1], 2),
+        },
+        "head": {
+            "x": round(clamp(best["head"][0], 0, width), 2),
+            "y": round(clamp(best["head"][1], 0, height), 2),
+        },
+        "score": round(clamp(best["score"], 0.25, 0.92), 3),
+    }
+
+
 def video_metadata(video_path):
     try:
         import cv2
@@ -111,6 +284,7 @@ def fallback_result(args, reason):
 
     return {
         "debug": {
+            "clubDetectedFrames": 0,
             "droppedFrames": 0,
             "fallbackReason": reason,
             "frameCount": total_frames,
@@ -296,13 +470,16 @@ def mediapipe_solutions_result(args, cv2, mp):
             if "left_shoulder" in keypoints and "right_shoulder" in keypoints:
                 keypoints["neck"] = midpoint(keypoints["left_shoulder"], keypoints["right_shoulder"])
 
-            frames.append(
-                {
-                    "frame": frame_index,
-                    "time": round(frame_index / fps, 4),
-                    "keypoints": keypoints,
-                }
-            )
+            frame_payload = {
+                "frame": frame_index,
+                "time": round(frame_index / fps, 4),
+                "keypoints": keypoints,
+            }
+            club = detect_club_from_frame(image, keypoints, frame_index, frame_count or frame_index + 1)
+            if club:
+                frame_payload["club"] = club
+
+            frames.append(frame_payload)
             frame_index += 1
     finally:
         pose.close()
@@ -315,6 +492,7 @@ def mediapipe_solutions_result(args, cv2, mp):
         "debug": {
             "droppedFrames": dropped_frames,
             "frameCount": frame_count or frame_index,
+            "clubDetectedFrames": sum(1 for frame in frames if frame.get("club")),
             "runtime": "mediapipe_solutions",
         },
         "durationSec": (frame_count or frame_index) / fps,
@@ -389,13 +567,16 @@ def mediapipe_tasks_result(args, cv2, mp):
                 if "left_shoulder" in keypoints and "right_shoulder" in keypoints:
                     keypoints["neck"] = midpoint(keypoints["left_shoulder"], keypoints["right_shoulder"])
 
-                frames.append(
-                    {
-                        "frame": frame_index,
-                        "time": round(frame_index / fps, 4),
-                        "keypoints": keypoints,
-                    }
-                )
+                frame_payload = {
+                    "frame": frame_index,
+                    "time": round(frame_index / fps, 4),
+                    "keypoints": keypoints,
+                }
+                club = detect_club_from_frame(image, keypoints, frame_index, frame_count or frame_index + 1)
+                if club:
+                    frame_payload["club"] = club
+
+                frames.append(frame_payload)
                 frame_index += 1
     finally:
         capture.release()
@@ -407,6 +588,7 @@ def mediapipe_tasks_result(args, cv2, mp):
         "debug": {
             "droppedFrames": dropped_frames,
             "frameCount": frame_count or frame_index,
+            "clubDetectedFrames": sum(1 for frame in frames if frame.get("club")),
             "runtime": "mediapipe_tasks",
             "taskModelPath": str(model_path),
         },

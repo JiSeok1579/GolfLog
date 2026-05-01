@@ -45,6 +45,31 @@ function normalizeKeypoints(rawKeypoints, width, height) {
     });
 }
 
+function normalizeClubPoint(rawPoint, width, height) {
+  if (!rawPoint || typeof rawPoint !== "object") return null;
+  const x = Number(rawPoint.x);
+  const y = Number(rawPoint.y);
+  if (!Number.isFinite(x) || !Number.isFinite(y)) return null;
+  return {
+    x: Number(pointToPercent(x, width).toFixed(2)),
+    y: Number(pointToPercent(y, height).toFixed(2)),
+  };
+}
+
+function normalizeDetectedClub(rawClub, width, height) {
+  if (!rawClub || typeof rawClub !== "object") return null;
+  const grip = normalizeClubPoint(rawClub.grip, width, height);
+  const head = normalizeClubPoint(rawClub.head, width, height);
+  if (!grip || !head) return null;
+  const score = clamp(numberOr(rawClub.score, 1), 0, 1);
+  if (score < 0.55) return null;
+  return {
+    grip,
+    head,
+    score,
+  };
+}
+
 function pointByName(keypoints, name, minScore = 0.2) {
   const point = keypoints.find((item) => item.name === name);
   return point && point.score >= minScore ? point : null;
@@ -168,8 +193,9 @@ function normalizeFrames(raw, width, height, input) {
       if (keypoints.length === 0) return null;
       const frameNumber = Math.max(0, Math.round(numberOr(frame.frame, 0)));
       const frameProgress = maxFrame > 0 ? clamp(frameNumber / maxFrame, 0, 1) : 0;
+      const detectedClub = normalizeDetectedClub(frame.club, width, height);
       return {
-        club: frame.club || virtualClubFromHands(keypoints, input, frameProgress),
+        club: detectedClub || virtualClubFromHands(keypoints, input, frameProgress),
         frame: frameNumber,
         keypoints,
         timeSec: Number(numberOr(frame.time, 0).toFixed(3)),

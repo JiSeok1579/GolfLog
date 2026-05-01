@@ -24,6 +24,7 @@ pnpm-debug.log*
 coverage/
 .vite/
 .cache/
+__pycache__/
 
 # Local server data
 server-data/

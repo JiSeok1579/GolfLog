@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type FormEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type FormEvent, type KeyboardEvent } from "react";
 import { Activity, Play, Upload } from "lucide-react";
 import { Button } from "../components/ui/Button";
 import { Card } from "../components/ui/Card";
@@ -81,12 +81,35 @@ function nearestFrame(result: SwingAnalysisResult | null, currentTime: number) {
   }, result.pose2dFrames[0]);
 }
 
+function maxAnalysisFrame(result: SwingAnalysisResult) {
+  const phaseMax = result.phases.reduce((best, phase) => Math.max(best, phase.endFrame), 0);
+  const poseMax = result.pose2dFrames.reduce((best, poseFrame) => Math.max(best, poseFrame.frame), 0);
+  return Math.max(1, phaseMax, poseMax, Math.round(result.video.durationSec * result.video.fps));
+}
+
+function phaseStartPercent(result: SwingAnalysisResult, startFrame: number) {
+  return Math.max(0, Math.min(100, (startFrame / maxAnalysisFrame(result)) * 100));
+}
+
+function currentPhaseName(result: SwingAnalysisResult | null, currentTime: number) {
+  if (!result) return "";
+  const targetFrame = Math.round(currentTime * result.video.fps);
+  return result.phases.find((phase) => targetFrame >= phase.startFrame && targetFrame <= phase.endFrame)?.name ?? "";
+}
+
+function activateWithKeyboard(event: KeyboardEvent<HTMLElement>, action: () => void) {
+  if (event.key !== "Enter" && event.key !== " ") return;
+  event.preventDefault();
+  action();
+}
+
 function sleep(ms: number) {
   return new Promise((resolve) => window.setTimeout(resolve, ms));
 }
 
 export function SwingAiPage() {
   const { language } = useLanguage();
+  const videoRef = useRef<HTMLVideoElement | null>(null);
   const [videoFile, setVideoFile] = useState<File | null>(null);
   const [videoPreviewUrl, setVideoPreviewUrl] = useState("");
   const [club, setClub] = useState<Club>("Driver");
@@ -112,6 +135,7 @@ export function SwingAiPage() {
   }, [videoFile]);
 
   const frame = nearestFrame(analysis, currentTime);
+  const activePhaseName = currentPhaseName(analysis, currentTime);
   const scoreRows = useMemo(
     () =>
       analysis
@@ -125,6 +149,22 @@ export function SwingAiPage() {
         : [],
     [analysis],
   );
+
+  const seekToFrame = (targetFrame: number) => {
+    if (!analysis) return;
+    const seconds = targetFrame / Math.max(analysis.video.fps, 1);
+    const video = videoRef.current;
+    if (video) {
+      const videoDuration = Number.isFinite(video.duration) ? video.duration : seconds;
+      video.currentTime = Math.max(0, Math.min(seconds, videoDuration));
+    }
+    setCurrentTime(seconds);
+  };
+
+  const seekToPhase = (phaseName: string) => {
+    const phase = analysis?.phases.find((item) => item.name === phaseName);
+    if (phase) seekToFrame(phase.startFrame);
+  };
 
   const submit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -269,12 +309,34 @@ export function SwingAiPage() {
           </div>
           <div className="swing-video-frame">
             {videoPreviewUrl ? (
-              <video controls muted onTimeUpdate={(event) => setCurrentTime(event.currentTarget.currentTime)} playsInline src={videoPreviewUrl} />
+              <video
+                controls
+                muted
+                onTimeUpdate={(event) => setCurrentTime(event.currentTarget.currentTime)}
+                playsInline
+                ref={videoRef}
+                src={videoPreviewUrl}
+              />
             ) : (
               <div className="swing-video-placeholder">{text(language, "영상을 선택하세요", "Select a video")}</div>
             )}
             {frame ? <SkeletonOverlay frame={frame} /> : null}
           </div>
+          {analysis ? (
+            <div aria-label="Swing phase timeline" className="swing-phase-timeline">
+              {analysis.phases.map((phase) => (
+                <button
+                  aria-label={`${phaseLabel(phase.name)} ${phase.startFrame} frame`}
+                  className={`swing-phase-marker${activePhaseName === phase.name ? " is-active" : ""}`}
+                  key={phase.name}
+                  onClick={() => seekToFrame(phase.startFrame)}
+                  style={{ left: `${phaseStartPercent(analysis, phase.startFrame)}%` }}
+                  title={`${phaseLabel(phase.name)} ${phase.startFrame}f`}
+                  type="button"
+                />
+              ))}
+            </div>
+          ) : null}
           {status === "running" || status === "queued" ? <div className="swing-analysis-status">{currentStage || status}</div> : null}
         </Card>
       </div>
@@ -319,10 +381,15 @@ export function SwingAiPage() {
               </div>
               <div className="swing-phase-list">
                 {analysis.phases.map((phase) => (
-                  <div key={phase.name}>
+                  <button
+                    className={`swing-phase-row${activePhaseName === phase.name ? " is-active" : ""}`}
+                    key={phase.name}
+                    onClick={() => seekToFrame(phase.startFrame)}
+                    type="button"
+                  >
                     <span>{phaseLabel(phase.name)}</span>
                     <strong>{phase.startFrame}-{phase.endFrame}f</strong>
-                  </div>
+                  </button>
                 ))}
               </div>
             </Card>
@@ -338,7 +405,14 @@ export function SwingAiPage() {
             </div>
             <div className="swing-recommendation-list">
               {analysis.recommendations.map((recommendation) => (
-                <article data-severity={recommendation.severity} key={recommendation.id}>
+                <article
+                  data-severity={recommendation.severity}
+                  key={recommendation.id}
+                  onClick={() => seekToPhase(recommendation.phase)}
+                  onKeyDown={(event) => activateWithKeyboard(event, () => seekToPhase(recommendation.phase))}
+                  role="button"
+                  tabIndex={0}
+                >
                   <div>
                     <span>{phaseLabel(recommendation.phase)} · {recommendation.value}</span>
                     <h3>{recommendation.title}</h3>

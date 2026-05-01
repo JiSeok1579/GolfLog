@@ -80,27 +80,199 @@ function normalizeFrames(raw, width, height) {
     .filter(Boolean);
 }
 
-function phaseFrames(maxFrame) {
-  const total = Math.max(maxFrame, 120);
+function keypoint(frame, name, minScore = 0.35) {
+  const point = frame?.keypoints.find((item) => item.name === name);
+  return point && point.score >= minScore ? point : null;
+}
+
+function averagePoints(points) {
+  const valid = points.filter(Boolean);
+  if (valid.length === 0) return null;
   return {
-    address: [0, Math.round(total * 0.1)],
-    takeaway: [Math.round(total * 0.1) + 1, Math.round(total * 0.25)],
-    backswing_top: [Math.round(total * 0.25) + 1, Math.round(total * 0.42)],
-    downswing: [Math.round(total * 0.42) + 1, Math.round(total * 0.62)],
-    impact: [Math.round(total * 0.62) + 1, Math.round(total * 0.68)],
-    follow_through: [Math.round(total * 0.68) + 1, Math.round(total * 0.84)],
-    finish: [Math.round(total * 0.84) + 1, total],
+    x: valid.reduce((sum, point) => sum + point.x, 0) / valid.length,
+    y: valid.reduce((sum, point) => sum + point.y, 0) / valid.length,
   };
 }
 
-function createPhases(frames, fps) {
+function handCenter(frame) {
+  return (
+    averagePoints([keypoint(frame, "left_wrist"), keypoint(frame, "right_wrist")]) ||
+    frame?.club?.grip ||
+    null
+  );
+}
+
+function hipCenter(frame) {
+  return averagePoints([keypoint(frame, "left_hip"), keypoint(frame, "right_hip")]);
+}
+
+function clubHead(frame) {
+  if (!frame?.club || frame.club.score < 0.25) return null;
+  return frame.club.head;
+}
+
+function distance(a, b) {
+  if (!a || !b) return 0;
+  return Math.hypot(a.x - b.x, a.y - b.y);
+}
+
+function frameMotion(previous, current) {
+  const handMotion = distance(handCenter(previous), handCenter(current));
+  const clubMotion = distance(clubHead(previous), clubHead(current));
+  const hipMotion = distance(hipCenter(previous), hipCenter(current));
+  return Math.max(handMotion, clubMotion * 0.7, hipMotion * 1.4);
+}
+
+function framesInRange(frames, startFrame, endFrame, pointSelector) {
+  return frames.filter((frame) => {
+    return frame.frame >= startFrame && frame.frame <= endFrame && (!pointSelector || pointSelector(frame));
+  });
+}
+
+function estimateAddressEnd(frames, total) {
+  const first = frames.find((frame) => handCenter(frame)) || frames[0];
+  const firstHand = handCenter(first);
+  const firstClub = clubHead(first);
+  const limit = Math.round(total * 0.18);
+  const fallback = Math.round(total * 0.1);
+
+  for (let index = 1; index < frames.length; index += 1) {
+    const frame = frames[index];
+    if (frame.frame > limit) break;
+    const handMove = distance(firstHand, handCenter(frame));
+    const clubMove = distance(firstClub, clubHead(frame));
+    if (Math.max(handMove, clubMove * 0.65) >= 8) {
+      return clamp(frame.frame - 1, 0, limit);
+    }
+  }
+
+  return clamp(fallback, 0, limit);
+}
+
+function estimateTopFrame(frames, total, addressEnd) {
+  const fallback = Math.round(total * 0.42);
+  const start = Math.max(addressEnd + 1, Math.round(total * 0.16));
+  const end = Math.round(total * 0.6);
+  const candidates = framesInRange(frames, start, end, handCenter);
+  if (candidates.length === 0) return fallback;
+
+  return candidates.reduce((best, frame) => {
+    const hand = handCenter(frame);
+    const bestHand = handCenter(best);
+    if (!hand || !bestHand) return best;
+    if (hand.y === bestHand.y) return frame.frame < best.frame ? frame : best;
+    return hand.y < bestHand.y ? frame : best;
+  }, candidates[0]).frame;
+}
+
+function estimateImpactFrame(frames, total, topFrame) {
+  const fallback = Math.round(total * 0.65);
+  const addressFrame = frames.find((frame) => handCenter(frame)) || frames[0];
+  const addressHand = handCenter(addressFrame);
+  const addressClub = clubHead(addressFrame);
+  const start = Math.max(topFrame + 1, Math.round(total * 0.52));
+  const end = Math.round(total * 0.82);
+  const expected = Math.round(total * 0.67);
+  const candidates = framesInRange(frames, start, end, handCenter);
+  if (candidates.length === 0) return fallback;
+
+  return candidates.reduce((best, frame) => {
+    const hand = handCenter(frame);
+    const club = clubHead(frame);
+    const bestHand = handCenter(best);
+    const bestClub = clubHead(best);
+    const score =
+      distance(hand, addressHand) +
+      distance(club, addressClub) * 0.35 +
+      Math.abs(frame.frame - expected) * 0.08;
+    const bestScore =
+      distance(bestHand, addressHand) +
+      distance(bestClub, addressClub) * 0.35 +
+      Math.abs(best.frame - expected) * 0.08;
+    return score < bestScore ? frame : best;
+  }, candidates[0]).frame;
+}
+
+function estimateFinishStart(frames, total, impactFrame) {
+  const fallback = Math.round(total * 0.84);
+  const start = Math.max(impactFrame + 1, Math.round(total * 0.78));
+  const candidates = frames.filter((frame) => frame.frame >= start);
+
+  for (let index = 1; index < candidates.length; index += 1) {
+    const previous = candidates[index - 1];
+    const current = candidates[index];
+    if (frameMotion(previous, current) <= 2.3) return current.frame;
+  }
+
+  return fallback;
+}
+
+function repairPhaseRanges(ranges, total) {
+  let cursor = 0;
+  return ranges.map((range, index) => {
+    if (index === ranges.length - 1) {
+      return { ...range, startFrame: clamp(Math.max(cursor, range.startFrame), 0, total), endFrame: total };
+    }
+
+    const remaining = ranges.length - index - 1;
+    const maxEnd = Math.max(cursor, total - remaining);
+    const startFrame = clamp(Math.max(cursor, range.startFrame), 0, maxEnd);
+    const endFrame = clamp(Math.max(startFrame, range.endFrame), startFrame, maxEnd);
+    cursor = endFrame + 1;
+    return { ...range, startFrame, endFrame };
+  });
+}
+
+function phaseFrames(frames, durationFrame) {
   const maxFrame = frames.reduce((best, frame) => Math.max(best, frame.frame), 0);
-  return Object.entries(phaseFrames(maxFrame)).map(([name, [startFrame, endFrame]]) => ({
+  const total = Math.max(maxFrame, durationFrame, 1);
+  const sortedFrames = [...frames].sort((a, b) => a.frame - b.frame);
+  const minGap = Math.max(2, Math.round(total * 0.025));
+  const topWindow = Math.max(2, Math.round(total * 0.025));
+  const impactWindow = Math.max(2, Math.round(total * 0.018));
+
+  const rawAddressEnd = estimateAddressEnd(sortedFrames, total);
+  const addressEnd = clamp(rawAddressEnd, 0, Math.round(total * 0.18));
+  const rawTopFrame = estimateTopFrame(sortedFrames, total, addressEnd);
+  const topFrame = clamp(rawTopFrame, addressEnd + minGap * 2, Math.round(total * 0.62));
+  const rawImpactFrame = estimateImpactFrame(sortedFrames, total, topFrame);
+  const impactFrame = clamp(rawImpactFrame, topFrame + minGap * 2, Math.round(total * 0.84));
+  const rawFinishStart = estimateFinishStart(sortedFrames, total, impactFrame);
+  const finishStart = clamp(rawFinishStart, impactFrame + minGap * 2, total);
+
+  return repairPhaseRanges(
+    [
+      { name: "address", startFrame: 0, endFrame: addressEnd },
+      { name: "takeaway", startFrame: addressEnd + 1, endFrame: topFrame - topWindow - 1 },
+      { name: "backswing_top", startFrame: topFrame - topWindow, endFrame: topFrame + topWindow },
+      { name: "downswing", startFrame: topFrame + topWindow + 1, endFrame: impactFrame - impactWindow - 1 },
+      { name: "impact", startFrame: impactFrame - impactWindow, endFrame: impactFrame + impactWindow },
+      { name: "follow_through", startFrame: impactFrame + impactWindow + 1, endFrame: finishStart - 1 },
+      { name: "finish", startFrame: finishStart, endFrame: total },
+    ],
+    total,
+  );
+}
+
+function createPhases(frames, fps, durationSec) {
+  const durationFrame = Math.round(Math.max(durationSec, 0) * Math.max(fps, 1));
+  return phaseFrames(frames, durationFrame).map(({ name, startFrame, endFrame }) => ({
     endFrame,
     name,
     startFrame,
     timeSec: Number((startFrame / Math.max(fps, 1)).toFixed(3)),
   }));
+}
+
+function tempoRatioFromPhases(phases) {
+  const address = phases.find((phase) => phase.name === "address");
+  const top = phases.find((phase) => phase.name === "backswing_top");
+  const impact = phases.find((phase) => phase.name === "impact");
+  if (!address || !top || !impact) return 0;
+
+  const backswingFrames = Math.max(top.endFrame - address.startFrame, 1);
+  const downswingFrames = Math.max(impact.startFrame - top.endFrame, 1);
+  return Number(clamp(backswingFrames / downswingFrames, 0.5, 5).toFixed(1));
 }
 
 function headSwayPercent(frames) {
@@ -155,6 +327,7 @@ export function normalizeWorkerResult({ analysisId, createdAt, input, raw, user 
   const confidence = averageConfidence(pose2dFrames);
   const headSway = headSwayPercent(pose2dFrames);
   const overall = Math.round(clamp(72 + confidence * 20 - Math.min(headSway, 12), 45, 96));
+  const phases = createPhases(pose2dFrames, fps, durationSec);
   const features = {
     clubPath: "neutral",
     headSwayCm: Number(headSway.toFixed(1)),
@@ -162,7 +335,7 @@ export function normalizeWorkerResult({ analysisId, createdAt, input, raw, user 
     pelvisSwayCm: 0,
     shoulderTurnDeg: 0,
     spineAngleDeg: 0,
-    tempoRatio: 0,
+    tempoRatio: tempoRatioFromPhases(phases),
     xFactorDeg: 0,
   };
 
@@ -176,7 +349,7 @@ export function normalizeWorkerResult({ analysisId, createdAt, input, raw, user 
       videoName: input.videoName,
       viewAngle: input.viewAngle,
     },
-    phases: createPhases(pose2dFrames, fps),
+    phases,
     pose2dFrames,
     recommendations: createRecommendations(user, pose2dFrames, features),
     scores: {

@@ -18,7 +18,8 @@
 - 개인 컴퓨터에서 `http://127.0.0.1:5173/`로만 사용.
 - API는 `127.0.0.1:3001`에서 실행.
 - 데이터는 `/Volumes/X31/golflog-data/golflog.json`에 저장.
-- Git 업로드는 하지 않음.
+- 운영 데이터와 영상은 Git에 올리지 않음.
+- 코드 변경은 phase별 브랜치/PR로 커밋, 머지함.
 
 ## 단계별 진행 계획
 
@@ -38,9 +39,9 @@
 
 남은 보완:
 
-- [ ] 실제 영상 바이너리 업로드 저장 구조 추가
+- [x] 실제 영상 바이너리 업로드 저장 구조 추가
 - [ ] 분석 기록 목록과 이전 결과 다시 열기
-- [ ] 프레임 seek와 overlay 동기화
+- [x] 프레임 seek와 overlay 동기화
 
 ### Phase 1: 2D Golfer + Club Pose
 
@@ -67,9 +68,14 @@
 
 목표: Address, Takeaway, Top, Downswing, Impact, Finish 등 이벤트를 자동 분할한다.
 
-- 초기에는 pose/club trajectory rule 기반으로 구현한다.
-- 이후 GolfDB/SwingNet 계열 모델로 교체한다.
-- 출력은 Phase 0의 `phases` JSON에 맞춘다.
+- [x] pose/club trajectory rule 기반 자동 분할 구현
+- [x] Address, Takeaway, Top, Downswing, Impact, Follow Through, Finish를 `phases` JSON으로 출력
+- [x] Top/Impact/Finish 주요 이벤트를 pose frame에서 휴리스틱으로 추정
+- [x] 영상 하단 phase timeline marker 추가
+- [x] phase 목록 클릭 시 해당 프레임으로 seek
+- [x] recommendation 클릭 시 관련 phase로 seek
+- [ ] GolfDB/SwingNet 계열 모델 검토 및 교체 가능성 평가
+- [ ] 수동 phase 보정 UI 추가
 
 ### Phase 3: 3D Pose Estimation
 

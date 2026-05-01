@@ -1276,6 +1276,46 @@ main {
   text-transform: uppercase;
 }
 
+.swing-phase-timeline {
+  height: 32px;
+  margin-top: 10px;
+  padding: 0 8px;
+  position: relative;
+}
+
+.swing-phase-timeline::before {
+  background: var(--w-line);
+  content: "";
+  height: 2px;
+  left: 8px;
+  position: absolute;
+  right: 8px;
+  top: 15px;
+}
+
+.swing-phase-marker {
+  appearance: none;
+  background: var(--w-paper);
+  border: 2px solid var(--w-muted);
+  border-radius: 50%;
+  cursor: pointer;
+  height: 14px;
+  padding: 0;
+  position: absolute;
+  top: 9px;
+  transform: translateX(-50%);
+  width: 14px;
+}
+
+.swing-phase-marker:hover,
+.swing-phase-marker:focus-visible,
+.swing-phase-marker.is-active {
+  background: var(--w-accent);
+  border-color: var(--w-accent);
+  outline: 2px solid rgba(191, 109, 74, 0.22);
+  outline-offset: 2px;
+}
+
 .swing-analysis-status {
   background: var(--w-paper-2);
   border: 1px solid var(--w-line);
@@ -1365,19 +1405,37 @@ main {
 }
 
 .swing-feature-list div,
-.swing-phase-list div {
+.swing-phase-row {
   align-items: center;
+  appearance: none;
+  background: transparent;
   border-bottom: 1px solid var(--w-line);
+  border-left: 0;
+  border-right: 0;
+  border-top: 0;
+  color: inherit;
+  cursor: pointer;
   display: flex;
+  font: inherit;
   gap: 12px;
   justify-content: space-between;
   padding-bottom: 10px;
+  text-align: left;
+  width: 100%;
 }
 
 .swing-feature-list div:last-child,
-.swing-phase-list div:last-child {
+.swing-phase-row:last-child {
   border-bottom: 0;
   padding-bottom: 0;
+}
+
+.swing-phase-row:hover,
+.swing-phase-row:focus-visible,
+.swing-phase-row.is-active {
+  color: var(--w-ink);
+  outline: 2px solid rgba(191, 109, 74, 0.18);
+  outline-offset: 3px;
 }
 
 .swing-feature-list strong,
@@ -1400,7 +1458,15 @@ main {
   border: 1px solid var(--w-line);
   border-left: 4px solid var(--w-fill-4);
   border-radius: 7px;
+  cursor: pointer;
   padding: 13px 14px;
+}
+
+.swing-recommendation-list article:hover,
+.swing-recommendation-list article:focus-visible {
+  background: var(--w-paper-2);
+  outline: 2px solid rgba(191, 109, 74, 0.16);
+  outline-offset: 2px;
 }
 
 .swing-recommendation-list article[data-severity="warning"],

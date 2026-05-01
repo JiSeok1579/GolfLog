@@ -32,6 +32,15 @@ npm run check:pose -- --require-real /path/to/swing.mp4
 
 The first command verifies that the worker produces usable analysis JSON. The `--require-real` form fails if the worker is still using fallback frames.
 
+Render a local overlay preview contact sheet:
+
+```bash
+npm run preview:pose
+npm run preview:pose -- --require-real /path/to/swing.mp4 /tmp/golflog-pose-preview.jpg
+```
+
+The preview command writes worker JSON and the rendered image to `/tmp` by default. Keep those outputs local; do not commit sample videos, generated previews, or model files.
+
 For MediaPipe Tasks, keep the model outside Git:
 
 ```bash

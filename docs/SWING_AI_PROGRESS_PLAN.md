@@ -8,7 +8,7 @@
 - 가이드의 초기 구조는 FastAPI + Python pose 모델 + React UI를 전제로 한다.
 - 현재 앱은 개인 로컬 사용 전용으로 전환되어 있으며 Vite 프론트엔드와 Node 로컬 API가 이미 동작한다.
 - 따라서 지금 단계에서는 서버를 새로 늘리지 않고 기존 로컬 Node API에 Phase 0 분석 흐름을 붙인다.
-- 실제 2D/3D pose 모델, MMPose, MediaPipe, PyTorch, IK solver 설치는 Phase 1 이후로 분리한다.
+- 실제 2D pose baseline과 Node → Python worker 연결은 Phase 1-A 기준으로 붙었다. 3D pose, MMPose/PyTorch, ROM, IK solver는 아직 붙이지 않는다.
 
 ## 현재 운영 원칙
 
@@ -20,6 +20,21 @@
 - 데이터는 `/Volumes/X31/golflog-data/golflog.json`에 저장.
 - 운영 데이터와 영상은 Git에 올리지 않음.
 - 코드 변경은 phase별 브랜치/PR로 커밋, 머지함.
+
+## Current Priority: Trustworthy 2D Analysis UX
+
+현재 우선순위는 3D, IK, ghost swing이 아니라 실제 2D 분석 결과를 사용자가 신뢰 가능한 수준으로 이해하게 만드는 것이다.
+
+- [x] `analysisQuality` metadata 추가
+- [x] fallback/mock 결과 warning 표시
+- [x] fallback 결과를 정상 점수처럼 표시하지 않음
+- [x] keypoint confidence 기반 skeleton overlay 표시
+- [x] low-confidence frame label 표시
+- [x] recommendation card를 phase, evidence, reason, suggestion, drill 중심으로 정리
+- [x] recommendation의 `View phase` 버튼으로 해당 구간 seek
+- [x] capture guide card 추가
+- [x] `src/components/swing-ai/` 아래 핵심 UI 컴포넌트 분리 시작
+- [x] `server/analysis/metrics.js`에 2D proxy metric 계산 분리
 
 ## 단계별 진행 계획
 
@@ -36,6 +51,7 @@
 - [x] 영상 선택, 클럽, 촬영 각도, 주 사용 손 입력 UI 추가
 - [x] mock skeleton, club line overlay 표시
 - [x] mock biomechanical summary, phase, recommendation 표시
+- [x] mock/sample 결과를 fallback 성격으로 명확히 표시하고 점수는 신뢰 점수처럼 보이지 않게 처리
 
 남은 보완:
 
@@ -70,6 +86,10 @@
 - [x] OpenCV 기반 클럽 shaft 후보 검출로 실제 프레임의 `club.grip/head` 우선 추출
 - [x] 전용 학습 모델을 Git 외부에서 연결하는 club detector adapter 계약 추가
 - [x] phase 보정 후 tempo, club path, Impact 점수, 추천 문구 재계산 정합성 보강
+- [x] worker `debug`에서 runtime/model/frame/drop/club detection 정보를 `analysisQuality`로 정규화
+- [x] fallback synthetic pose 결과를 UI에서 명확히 표시
+- [x] confidence-aware skeleton overlay 적용
+- [x] 2D proxy metrics 추가: `pose_confidence`, `club_detection_rate`, `head_sway_proxy`, `pelvis_sway_proxy`, `address_spine_angle_proxy`, `left_arm_bend_at_top_proxy`, `shoulder_turn_proxy`, `hip_turn_proxy`, `tempo_ratio`
 - [ ] 전용 학습 모델 기반 club head/grip 실제 연결 및 OpenCV 대비 평가
 
 예시 데이터 운영 원칙:
@@ -98,6 +118,8 @@
 - frame별 body keypoint 저장
 - club grip/head 추정 저장
 - overlay가 실제 추정값으로 표시
+- 실제 분석인지 fallback/mock인지 사용자가 즉시 구분 가능
+- fallback/mock 결과는 정상 진단 점수처럼 표시하지 않음
 
 ### Phase 2: Swing Phase Segmentation
 
@@ -163,6 +185,6 @@
 
 ## 다음 실행 순서
 
-1. 전용 club 모델 command 구현 또는 확보 후 `GOLFLOG_CLUB_DETECTOR_COMMAND`로 실제 연결
-2. GolfDB/SwingNet 계열 phase 모델 검토 및 교체 가능성 평가
-3. 실제 본인 스윙 영상으로 keypoint, club path, phase 보정 workflow 검증
+1. 실제 본인 스윙 영상으로 keypoint confidence, club detection rate, phase 보정 workflow 검증
+2. 전용 club 모델 command 구현 또는 확보 후 `GOLFLOG_CLUB_DETECTOR_COMMAND`로 실제 연결
+3. GolfDB/SwingNet 계열 phase 모델 검토 및 교체 가능성 평가

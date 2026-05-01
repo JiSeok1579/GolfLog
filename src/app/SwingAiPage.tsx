@@ -1,5 +1,9 @@
-import { useEffect, useMemo, useRef, useState, type FormEvent, type KeyboardEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { Activity, Crosshair, History, Play, RotateCcw, Save, SlidersHorizontal, Sparkles, Upload } from "lucide-react";
+import { AnalysisQualityBadge, qualityForAnalysis } from "../components/swing-ai/AnalysisQualityBadge";
+import { CaptureGuideCard } from "../components/swing-ai/CaptureGuideCard";
+import { RecommendationCards } from "../components/swing-ai/RecommendationCards";
+import { SkeletonOverlay } from "../components/swing-ai/SkeletonOverlay";
 import { Button } from "../components/ui/Button";
 import { Card } from "../components/ui/Card";
 import { Chip } from "../components/ui/Chip";
@@ -17,7 +21,6 @@ import { CLUBS, clubLabel } from "../data/clubs";
 import { text, useLanguage } from "../data/i18n";
 import { newSwingAnalysisSchema, type Club, type SwingAnalysisResult, type SwingDominantHand, type SwingPhase, type SwingPose2DFrame, type SwingViewAngle } from "../data/schema";
 
-type SwingKeypointName = SwingPose2DFrame["keypoints"][number]["name"];
 type SwingPoint = NonNullable<SwingPose2DFrame["club"]>["grip"];
 type ClubDraft = {
   frame: number;
@@ -35,22 +38,6 @@ const dominantHandOptions: Array<{ value: SwingDominantHand; label: { ko: string
   { value: "left", label: { ko: "왼손", en: "Left" } },
 ];
 
-const skeletonSegments: Array<[SwingKeypointName, SwingKeypointName]> = [
-  ["head", "neck"],
-  ["left_shoulder", "right_shoulder"],
-  ["left_shoulder", "left_elbow"],
-  ["left_elbow", "left_wrist"],
-  ["right_shoulder", "right_elbow"],
-  ["right_elbow", "right_wrist"],
-  ["left_shoulder", "left_hip"],
-  ["right_shoulder", "right_hip"],
-  ["left_hip", "right_hip"],
-  ["left_hip", "left_knee"],
-  ["left_knee", "left_ankle"],
-  ["right_hip", "right_knee"],
-  ["right_knee", "right_ankle"],
-];
-
 function phaseLabel(value: string) {
   const labels: Record<string, string> = {
     address: "Address",
@@ -62,30 +49,6 @@ function phaseLabel(value: string) {
     finish: "Finish",
   };
   return labels[value] ?? value;
-}
-
-function keypointMap(frame: SwingPose2DFrame) {
-  return new Map(frame.keypoints.map((point) => [point.name, point]));
-}
-
-function SkeletonOverlay({ frame }: { frame: SwingPose2DFrame }) {
-  const points = keypointMap(frame);
-
-  return (
-    <svg className="swing-skeleton-overlay" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">
-      {skeletonSegments.map(([from, to]) => {
-        const a = points.get(from);
-        const b = points.get(to);
-        if (!a || !b) return null;
-        return <line className="swing-skeleton-line" key={`${from}-${to}`} x1={a.x} y1={a.y} x2={b.x} y2={b.y} />;
-      })}
-      {frame.club ? <line className="swing-club-line" x1={frame.club.grip.x} y1={frame.club.grip.y} x2={frame.club.head.x} y2={frame.club.head.y} /> : null}
-      {frame.keypoints.map((point) => (
-        <circle className="swing-skeleton-dot" cx={point.x} cy={point.y} key={point.name} r="1.25" />
-      ))}
-      {frame.club ? <circle className="swing-club-head" cx={frame.club.head.x} cy={frame.club.head.y} r="1.8" /> : null}
-    </svg>
-  );
 }
 
 function nearestFrame(result: SwingAnalysisResult | null, currentTime: number) {
@@ -121,12 +84,6 @@ function formatAnalysisDate(value: string) {
     minute: "2-digit",
     month: "2-digit",
   }).format(date);
-}
-
-function activateWithKeyboard(event: KeyboardEvent<HTMLElement>, action: () => void) {
-  if (event.key !== "Enter" && event.key !== " ") return;
-  event.preventDefault();
-  action();
 }
 
 function clampFrame(value: number, min: number, max: number) {
@@ -240,18 +197,20 @@ export function SwingAiPage() {
   const displayPhases = phaseDraft || analysis?.phases || [];
   const phaseDraftChanged = Boolean(analysis && phaseDraft && phaseFingerprint(analysis.phases) !== phaseFingerprint(phaseDraft));
   const activePhaseName = currentPhaseName(analysis, currentTime, phaseDraft || undefined);
+  const analysisQuality = analysis ? qualityForAnalysis(analysis) : null;
+  const scoreUnavailable = Boolean(analysisQuality?.isFallback);
   const scoreRows = useMemo(
     () =>
       analysis
         ? [
-            { label: "Overall", value: analysis.scores.overall },
-            { label: "Setup", value: analysis.scores.setup },
-            { label: "Backswing", value: analysis.scores.backswing },
-            { label: "Impact", value: analysis.scores.impact },
-            { label: "Balance", value: analysis.scores.balance },
+            { label: "Overall", value: scoreUnavailable ? "N/A" : analysis.scores.overall },
+            { label: "Setup", value: scoreUnavailable ? "N/A" : analysis.scores.setup },
+            { label: "Backswing", value: scoreUnavailable ? "N/A" : analysis.scores.backswing },
+            { label: "Impact", value: scoreUnavailable ? "N/A" : analysis.scores.impact },
+            { label: "Balance", value: scoreUnavailable ? "N/A" : analysis.scores.balance },
           ]
         : [],
-    [analysis],
+    [analysis, scoreUnavailable],
   );
 
   useEffect(() => {
@@ -557,6 +516,8 @@ export function SwingAiPage() {
             </div>
           </Card>
 
+          <CaptureGuideCard analysis={analysis} language={language} />
+
           {error ? <div className="form-error">{error}</div> : null}
 
           <div className="save-row">
@@ -592,7 +553,9 @@ export function SwingAiPage() {
                       <strong>{item.input.videoName}</strong>
                       <small>{formatAnalysisDate(item.updatedAt || item.createdAt)} · {clubLabel(item.input.club, language)}</small>
                     </span>
-                    <Chip tone={item.hasVideo ? "accent" : undefined}>{item.status === "completed" ? item.scores?.overall ?? "OK" : item.status}</Chip>
+                    <Chip tone={item.hasVideo ? "accent" : undefined}>
+                      {item.analysisQuality?.isFallback ? "N/A" : item.status === "completed" ? item.scores?.overall ?? "OK" : item.status}
+                    </Chip>
                   </button>
                 ))
               ) : (
@@ -610,6 +573,7 @@ export function SwingAiPage() {
             </div>
             <Chip>{frame ? `${frame.frame}f` : text(language, "대기", "Idle")}</Chip>
           </div>
+          {analysis ? <AnalysisQualityBadge analysis={analysis} language={language} /> : null}
           <div className="swing-video-frame">
             {videoPreviewUrl ? (
               <video
@@ -648,12 +612,13 @@ export function SwingAiPage() {
         <>
           <div className="swing-score-grid">
             {scoreRows.map((row) => (
-              <div key={row.label}>
+              <div data-unavailable={scoreUnavailable ? "true" : undefined} key={row.label}>
                 <span>{row.label}</span>
                 <strong>{row.value}</strong>
               </div>
             ))}
           </div>
+          {scoreUnavailable ? <p className="swing-score-note">Score unavailable for fallback analysis</p> : null}
 
           <div className="swing-result-grid">
             <Card>
@@ -666,10 +631,11 @@ export function SwingAiPage() {
               </div>
               <div className="swing-feature-list">
                 <div><span>Tempo</span><strong>{analysis.features.tempoRatio.toFixed(1)}:1</strong></div>
-                <div><span>Shoulder Turn</span><strong>{analysis.features.shoulderTurnDeg}deg</strong></div>
-                <div><span>Hip Turn</span><strong>{analysis.features.hipTurnDeg}deg</strong></div>
-                <div><span>X-Factor</span><strong>{analysis.features.xFactorDeg}deg</strong></div>
-                <div><span>Head Sway</span><strong>{analysis.features.headSwayCm.toFixed(1)}cm</strong></div>
+                <div><span>Shoulder Turn Proxy</span><strong>{analysis.features.shoulderTurnDeg}deg</strong></div>
+                <div><span>Hip Turn Proxy</span><strong>{analysis.features.hipTurnDeg}deg</strong></div>
+                <div><span>X-Factor Proxy</span><strong>{analysis.features.xFactorDeg}deg</strong></div>
+                <div><span>Head Sway Proxy</span><strong>{analysis.features.headSwayCm.toFixed(1)}%</strong></div>
+                <div><span>Address Spine Proxy</span><strong>{analysis.features.spineAngleDeg}deg</strong></div>
                 <div><span>Club Path</span><strong>{analysis.features.clubPath}</strong></div>
               </div>
             </Card>
@@ -842,34 +808,7 @@ export function SwingAiPage() {
             )}
           </Card>
 
-          <Card className="swing-recommendation-card">
-            <div className="card-title-row">
-              <div>
-                <p className="card-kicker">Recommendations</p>
-                <h2>{text(language, "추천", "Recommendations")}</h2>
-              </div>
-              <Chip tone="accent">{analysis.recommendations.length}</Chip>
-            </div>
-            <div className="swing-recommendation-list">
-              {analysis.recommendations.map((recommendation) => (
-                <article
-                  data-severity={recommendation.severity}
-                  key={recommendation.id}
-                  onClick={() => seekToPhase(recommendation.phase)}
-                  onKeyDown={(event) => activateWithKeyboard(event, () => seekToPhase(recommendation.phase))}
-                  role="button"
-                  tabIndex={0}
-                >
-                  <div>
-                    <span>{phaseLabel(recommendation.phase)} · {recommendation.value}</span>
-                    <h3>{recommendation.title}</h3>
-                    <p>{recommendation.detail}</p>
-                    <p>{recommendation.drill}</p>
-                  </div>
-                </article>
-              ))}
-            </div>
-          </Card>
+          <RecommendationCards analysis={analysis} language={language} onViewPhase={seekToPhase} phaseLabel={phaseLabel} />
         </>
       ) : null}
     </section>

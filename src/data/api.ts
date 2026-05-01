@@ -32,6 +32,7 @@ export type CreateSwingAnalysisResponse = SwingAnalysisStatusResponse & {
 };
 
 export type SwingAnalysisListItem = {
+  analysisQuality?: SwingAnalysisResult["analysisQuality"] | null;
   createdAt: string;
   hasVideo: boolean;
   id: string;

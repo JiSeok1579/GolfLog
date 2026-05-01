@@ -108,6 +108,25 @@ const swingBodyMovementScoreSchema = z.object({
   tempo: z.number().min(0).max(100),
 });
 
+const swingScoreEvidenceInputSchema = z.object({
+  label: z.string(),
+  source: z.string().optional(),
+  unit: z.string().optional(),
+  value: z.union([z.number(), z.string()]),
+});
+
+const swingScoreEvidenceItemSchema = z.object({
+  formula: z.string(),
+  inputs: z.array(swingScoreEvidenceInputSchema),
+  note: z.string().optional(),
+  score: z.number().min(0).max(100).optional(),
+});
+
+const swingScoreEvidenceSchema = z.object({
+  bodyMovementScores: z.record(z.string(), swingScoreEvidenceItemSchema).optional(),
+  phaseScores: z.record(z.string(), swingScoreEvidenceItemSchema).optional(),
+});
+
 const swingHistoricalComparisonSchema = z.object({
   club: clubSchema,
   sampleSize: z.number().int().nonnegative(),
@@ -117,6 +136,27 @@ const swingHistoricalComparisonSchema = z.object({
   positiveMatches: z.array(z.string()),
   negativeMatches: z.array(z.string()),
   dataSufficiency: z.enum(["sufficient", "limited", "insufficient"]),
+  dateRange: z
+    .object({
+      start: z.string().optional(),
+      end: z.string().optional(),
+    })
+    .optional(),
+  metricsUsed: z.array(z.string()).optional(),
+  recordsUsed: z
+    .array(
+      z.object({
+        id: z.string(),
+        sessionId: z.string(),
+        date: z.string().optional(),
+        carryM: z.number().optional(),
+        totalM: z.number().optional(),
+        sideDeviationM: z.number().optional(),
+        headSpeed: z.number().optional(),
+        launchAngle: z.number().optional(),
+      }),
+    )
+    .optional(),
 });
 
 export const swingKeypoint2DSchema = swingPoint2DSchema.extend({
@@ -171,6 +211,21 @@ export const swingRecommendationSchema = z.object({
   reason: z.string().optional(),
   safetyNote: z.string().optional(),
   suggestion: z.string().optional(),
+  confidence: z
+    .object({
+      level: z.enum(["high", "moderate", "low"]),
+      reason: z.string(),
+      score: z.number().min(0).max(100),
+      signals: z
+        .object({
+          analyzedFrames: z.number().nonnegative().optional(),
+          clubDetectedFrames: z.number().nonnegative().optional(),
+          clubDetectionRate: z.number().min(0).max(1).optional(),
+          poseConfidence: z.number().min(0).max(1).optional(),
+        })
+        .optional(),
+    })
+    .optional(),
 });
 
 export const swingAnalysisResultSchema = z.object({
@@ -206,6 +261,7 @@ export const swingAnalysisResultSchema = z.object({
   scores: swingScoreSchema,
   phaseScores: swingPhaseScoreSchema.optional(),
   bodyMovementScores: swingBodyMovementScoreSchema.optional(),
+  scoreEvidence: swingScoreEvidenceSchema.optional(),
   historicalComparison: swingHistoricalComparisonSchema.optional(),
   recommendations: z.array(swingRecommendationSchema),
   metricBaselines: z
@@ -251,6 +307,7 @@ export type SwingPose2DFrame = z.infer<typeof swingPose2DFrameSchema>;
 export type SwingRecommendation = z.infer<typeof swingRecommendationSchema>;
 export type SwingPhaseScores = z.infer<typeof swingPhaseScoreSchema>;
 export type SwingBodyMovementScores = z.infer<typeof swingBodyMovementScoreSchema>;
+export type SwingScoreEvidence = z.infer<typeof swingScoreEvidenceSchema>;
 export type SwingHistoricalComparison = z.infer<typeof swingHistoricalComparisonSchema>;
 export type SwingAnalysisResult = z.infer<typeof swingAnalysisResultSchema>;
 export type NewSwingAnalysisInput = z.infer<typeof newSwingAnalysisSchema>;

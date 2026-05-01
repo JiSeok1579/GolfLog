@@ -740,6 +740,125 @@ function normalizeAnalysisClubCorrection(analysis, body) {
   };
 }
 
+function poseFrameClubHead(frame) {
+  if (!frame?.club || frame.club.score < 0.25) return null;
+  return frame.club.head;
+}
+
+function nearestClubFrame(frames, targetFrame) {
+  return frames.reduce((best, current) => {
+    if (!poseFrameClubHead(current)) return best;
+    if (!best) return current;
+    return Math.abs(current.frame - targetFrame) < Math.abs(best.frame - targetFrame) ? current : best;
+  }, null);
+}
+
+function estimateAnalysisClubPath(analysis) {
+  const frames = [...analysis.pose2dFrames].sort((a, b) => a.frame - b.frame);
+  const impact = analysis.phases.find((phase) => phase.name === "impact");
+  if (!impact || frames.length < 2) return analysis.features.clubPath;
+
+  const impactFrame = nearestClubFrame(frames, Math.round((impact.startFrame + impact.endFrame) / 2));
+  const previousFrame =
+    [...frames]
+      .reverse()
+      .find((frame) => frame.frame < (impactFrame?.frame ?? impact.startFrame) && poseFrameClubHead(frame)) || null;
+  if (!impactFrame || !previousFrame) return analysis.features.clubPath;
+
+  const impactHead = poseFrameClubHead(impactFrame);
+  const previousHead = poseFrameClubHead(previousFrame);
+  const handedSign = analysis.input.dominantHand === "left" ? -1 : 1;
+  const horizontalMotion = (impactHead.x - previousHead.x) * handedSign;
+
+  if (horizontalMotion > 4) return "in-to-out";
+  if (horizontalMotion < -4) return "out-to-in";
+  return "neutral";
+}
+
+function clubPathScore(clubPath) {
+  const scores = {
+    "in-to-out": 84,
+    neutral: 88,
+    "out-to-in": 72,
+  };
+  return scores[clubPath] || scores.neutral;
+}
+
+function recomputeScoresForClubPath(scores, clubPath) {
+  const impact = Math.round(clampNumber(scores.impact * 0.65 + clubPathScore(clubPath) * 0.35, 0, 100));
+  const overall = Math.round(
+    clampNumber(scores.setup * 0.2 + scores.backswing * 0.25 + impact * 0.35 + scores.balance * 0.2, 0, 100),
+  );
+  return {
+    ...scores,
+    impact,
+    overall,
+  };
+}
+
+function clubPathRecommendation(user, analysis, clubPath) {
+  const phase = analysis.phases.some((item) => item.name === "impact") ? "impact" : "downswing";
+  const guidance = {
+    "in-to-out": {
+      detail: `${user.name}님의 보정된 클럽 head 기준 화면상 클럽 경로는 in-to-out에 가깝습니다. 과도해지면 출발 방향과 페이스 관리가 흔들릴 수 있으니 임팩트 직전 손목 릴리즈를 일정하게 유지하세요.`,
+      drill: "얼라인먼트 스틱을 목표선에 두고 50% 속도로 임팩트 전후 클럽 head가 같은 폭 안에서 지나가게 연습하세요.",
+      severity: "info",
+      title: "보정된 클럽 경로를 유지하세요",
+    },
+    neutral: {
+      detail: `${user.name}님의 보정된 클럽 head 기준 화면상 클럽 경로는 neutral에 가깝습니다. 현재는 경로보다 임팩트 전후 재현성을 우선 확인하는 것이 좋습니다.`,
+      drill: "짧은 하프스윙으로 임팩트 전후 클럽 head 위치가 반복되는지 5회씩 확인하세요.",
+      severity: "info",
+      title: "임팩트 전후 클럽 경로가 안정적입니다",
+    },
+    "out-to-in": {
+      detail: `${user.name}님의 보정된 클럽 head 기준 화면상 클럽 경로는 out-to-in에 가깝습니다. 단일 카메라 2D 추정값이므로 실제 구질과 함께 확인하되, 깎여 맞는 흐름이면 다운스윙 진입 각도를 줄이는 것이 좋습니다.`,
+      drill: "다운스윙 시작 때 손보다 하체 회전을 먼저 열고, 임팩트 백 안쪽 면을 스치듯 치는 드릴을 진행하세요.",
+      severity: "warning",
+      title: "아웃-투-인 경로를 점검하세요",
+    },
+  };
+  const item = guidance[clubPath] || guidance.neutral;
+  return {
+    detail: item.detail,
+    drill: item.drill,
+    id: "rec-club-path-correction",
+    metric: "club_path",
+    phase,
+    severity: item.severity,
+    title: item.title,
+    value: clubPath,
+  };
+}
+
+function upsertClubPathRecommendation(recommendations, recommendation) {
+  const next = [...recommendations];
+  const index = next.findIndex((item) => item.metric === "club_path" || item.id === recommendation.id);
+  if (index === -1) return [...next, recommendation];
+  next[index] = {
+    ...recommendation,
+    id: next[index].id || recommendation.id,
+  };
+  return next;
+}
+
+function refreshClubCorrectionMetrics(analysis, user) {
+  const clubPath = estimateAnalysisClubPath(analysis);
+  const features = {
+    ...analysis.features,
+    clubPath,
+  };
+  return {
+    ...analysis,
+    features,
+    recommendations: upsertClubPathRecommendation(
+      analysis.recommendations,
+      clubPathRecommendation(user, { ...analysis, features }, clubPath),
+    ),
+    scores: recomputeScoresForClubPath(analysis.scores, clubPath),
+  };
+}
+
 function updateAnalysisForUser(store, userId, analysisId, updater) {
   const analyses = analysisListForUser(store, userId);
   const current = analyses.find((analysis) => analysis.id === analysisId);
@@ -1159,13 +1278,16 @@ async function handleApi(req, res) {
     }
 
     const now = new Date().toISOString();
-    const updated = updateAnalysisForUser(store, auth.user.id, analysisId, (current) => ({
-      ...current,
-      pose2dFrames: current.pose2dFrames.map((poseFrame) =>
-        poseFrame.frame === correction.frame ? { ...poseFrame, club: correction.club } : poseFrame,
-      ),
-      updatedAt: now,
-    }));
+    const updated = updateAnalysisForUser(store, auth.user.id, analysisId, (current) => {
+      const corrected = {
+        ...current,
+        pose2dFrames: current.pose2dFrames.map((poseFrame) =>
+          poseFrame.frame === correction.frame ? { ...poseFrame, club: correction.club } : poseFrame,
+        ),
+        updatedAt: now,
+      };
+      return refreshClubCorrectionMetrics(corrected, auth.user);
+    });
     if (!updated) {
       sendJson(res, 404, { error: "analysis_not_found" });
       return;

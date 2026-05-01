@@ -2,7 +2,7 @@ import { ArrowRight, ClipboardCheck } from "lucide-react";
 import { Button } from "../ui/Button";
 import { Card } from "../ui/Card";
 import { Chip } from "../ui/Chip";
-import type { SwingAnalysisResult, SwingPhaseName, SwingRecommendation } from "../../data/schema";
+import type { SwingAnalysisResult, SwingPhaseName, SwingRecommendation, SwingRecommendationFollowUp } from "../../data/schema";
 
 type Language = "ko" | "en";
 type RecommendationConfidenceLevel = NonNullable<SwingRecommendation["confidence"]>["level"];
@@ -45,6 +45,11 @@ function recommendationConfidence(recommendation: SwingRecommendation, analysis:
   };
 }
 
+function recommendationFollowUp(recommendation: SwingRecommendation, analysis: SwingAnalysisResult): SwingRecommendationFollowUp | null {
+  if (analysis.analysisQuality?.isFallback) return null;
+  return analysis.recommendationFollowUps?.find((item) => item.recommendationId === recommendation.id) || null;
+}
+
 export function RecommendationCards({
   analysis,
   language,
@@ -69,6 +74,7 @@ export function RecommendationCards({
         {analysis.recommendations.map((recommendation) => {
           const range = recommendation.overlayFrameRange;
           const confidence = recommendationConfidence(recommendation, analysis);
+          const followUp = recommendationFollowUp(recommendation, analysis);
           return (
             <article data-severity={recommendation.severity} key={recommendation.id}>
               <div className="swing-recommendation-head">
@@ -106,6 +112,19 @@ export function RecommendationCards({
                 </div>
               </div>
               <p className="recommendation-confidence-note">{confidence.reason}</p>
+              {analysis.analysisQuality?.isFallback ? (
+                <p className="recommendation-follow-up-note">
+                  {label(language, "예시/fallback 결과는 추천 추적 대상에서 제외됩니다.", "Fallback/sample recommendations are excluded from follow-up tracking.")}
+                </p>
+              ) : followUp ? (
+                <div className="recommendation-follow-up-panel">
+                  <span>{label(language, "후속 추적", "Follow-up scaffold")}</span>
+                  <strong>{followUp.status}</strong>
+                  <p>
+                    {label(language, "향후 세션 연결", "Linked future sessions")}: {followUp.linkedFutureSessionIds.length}
+                  </p>
+                </div>
+              ) : null}
               {recommendation.safetyNote ? <p className="recommendation-safety">{recommendation.safetyNote}</p> : null}
               <Button className="recommendation-phase-button" onClick={() => onViewPhase(recommendation.phase)} type="button" variant="secondary">
                 <ClipboardCheck size={16} />

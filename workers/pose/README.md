@@ -41,6 +41,15 @@ npm run preview:pose -- --require-real /path/to/swing.mp4 /tmp/golflog-pose-prev
 
 The preview command writes worker JSON and the rendered image to `/tmp` by default. Keep those outputs local; do not commit sample videos, generated previews, or model files.
 
+Generate a local quality report:
+
+```bash
+npm run inspect:pose
+npm run inspect:pose -- --require-real /path/to/swing.mp4 /tmp/golflog-pose-quality.md
+```
+
+The report records fallback status, keypoint low-score/missing frames, and large coordinate jumps. Use it with the preview image to decide which frames need club or pose correction.
+
 For MediaPipe Tasks, keep the model outside Git:
 
 ```bash

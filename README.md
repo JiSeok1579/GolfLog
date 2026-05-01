@@ -8,10 +8,15 @@ It supports screen golf shot entry, club distance tracking, health records, a Ja
 
 User-entered records are stored by the local Node API in the configured server data file. Users log in or register with their name and phone number, and the browser only keeps the httpOnly device cookie used to identify the registered device.
 
+## Copyright and Local Data
+
+Model files, sample videos, user records, and dataset artifacts are local operating data and must not be committed. See `NOTICE.md` and `docs/COPYRIGHT_AND_DATA_POLICY.md`.
+
 ## Development
 
 ```bash
 npm install
+npm run check:payload
 npm run dev:api
 npm run dev
 ```

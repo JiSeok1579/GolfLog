@@ -1,8 +1,10 @@
 # Golf Log Design Build Plan
 
+Status note: this document started as the design-to-build plan before the production app existed. The current repo now contains the React/Vite app, local Node API, and Swing AI workflow. Use this file as historical design guidance; use `README.md`, `docs/LOCAL_PERSONAL_USE.md`, and `docs/SWING_AI_PROGRESS_PLAN.md` for current operation and AI implementation status.
+
 ## 1. Current Folder Review
 
-The current folder contains only design assets, not an application codebase.
+Original folder review:
 
 - `design/Golf Log Wireframes.html`: React/Babel static prototype shell.
 - `design/src/wireframe-styles.css`: shared visual system for all wireframes.
@@ -13,6 +15,8 @@ The current folder contains only design assets, not an application codebase.
 - `design/src/variant-radar.jsx`: Variant 4, profile/radar-first screens.
 
 The wireframes define four design directions across the same product domain. They should be treated as design alternatives and component references, not production-ready code.
+
+Current production code now lives under `src/`, `server/`, and `workers/pose/`.
 
 ## 2. Design Direction
 
@@ -187,10 +191,10 @@ src/
 
 ### Phase 1: App Foundation
 
-- Initialize React + TypeScript project.
-- Add route shell and top navigation.
-- Port design tokens from `wireframe-styles.css`.
-- Define reusable UI atoms: button, card, chip, segmented control, field, stat card, table.
+- [x] Initialize React + TypeScript project.
+- [x] Add route shell and top navigation.
+- [x] Port design tokens from `wireframe-styles.css`.
+- [x] Define reusable UI atoms: button, card, chip, segmented control, field, stat card, table.
 - Fix missing prototype color tokens before porting:
   - `--w-fill-1`
   - `--w-fill-2`
@@ -200,26 +204,27 @@ src/
 
 ### Phase 2: Chart and Visualization Components
 
-- Port chart components from `wireframe-parts.jsx` into typed React components.
-- Implement line chart, bar chart, heatmap, radar chart, fairway, and ball-flight components.
-- Replace prototype-only random values with deterministic seed data and real state.
-- Add empty, loading, and no-data states.
+- [x] Port chart components from `wireframe-parts.jsx` into typed React components.
+- [x] Implement line chart, bar chart, heatmap, radar chart, fairway, and ball-flight components.
+- [x] Replace prototype-only random values with deterministic seed data and real state.
+- [x] Add empty, loading, and no-data states.
 
 ### Phase 3: Data Layer
 
-- Define TypeScript schemas for profile, sessions, club shots, and health entries.
-- Add seed data matching the wireframes.
-- Add local persistence.
-- Add unit conversion for meters/yards and kilograms/pounds. Do not simply swap labels.
+- [x] Define TypeScript schemas for profile, sessions, club shots, and health entries.
+- [x] Add seed data matching the wireframes.
+- [x] Add local persistence through the local Node API.
+- [x] Add unit conversion for meters/yards and kilograms/pounds. Do not simply swap labels.
 
 ### Phase 4: MVP Screens
 
-- Build Dashboard from Variant 1.
-- Build Today Log from Variant 1, with bar/radar preview elements where useful.
-- Build Distance from Variant 1 plus Variant 2 comparison widgets.
-- Build Screen Golf from Variant 4.
-- Build Health from Variant 1 and Variant 4.
-- Build Calendar from Variant 3.
+- [x] Build Dashboard from Variant 1.
+- [x] Build Today Log from Variant 1, with bar/radar preview elements where useful.
+- [x] Build Distance from Variant 1 plus Variant 2 comparison widgets.
+- [x] Build Screen Golf from Variant 4.
+- [x] Build Health from Variant 1 and Variant 4.
+- [x] Build Calendar from Variant 3.
+- [x] Add Swing AI screen for upload, overlay, phases, corrections, and report cards.
 
 ### Phase 5: Responsive and Interaction Polish
 

@@ -1,5 +1,7 @@
 # Phase 0 Setup
 
+This is the initial environment and dependency snapshot for the app foundation. It is kept for setup history; the current Swing AI progress and next work items are tracked in `docs/SWING_AI_PROGRESS_PLAN.md`.
+
 ## Local Environment
 
 - Machine target: MacBook Air M4 / Apple Silicon.
@@ -41,6 +43,8 @@ Development libraries:
 - `zustand`: add only if cross-page state grows beyond local React state.
 - `vitest`, `@testing-library/react`: add when behavior becomes test-worthy.
 - `playwright`: add when responsive and browser QA starts.
+
+The current app still uses local React state and custom validation rather than these deferred libraries.
 
 ## Chart Decision
 

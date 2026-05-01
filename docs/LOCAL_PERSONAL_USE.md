@@ -27,6 +27,8 @@ The API stores user records on the external drive:
 /Volumes/X31/golflog-data/golflog.json
 ```
 
+Swing AI uploads and generated analysis files also stay under this local data directory. Model files stay in `/Volumes/X31/golflog-data/models/` and must not be committed.
+
 The LaunchAgent starts the API on:
 
 ```text
@@ -68,3 +70,21 @@ Registration creates:
 Login uses the same name and phone number and loads the saved records for that account.
 
 This is a practical browser-device rule. Clearing browser data or using another browser can appear as a new device.
+
+## 4. Swing AI
+
+Open:
+
+```text
+http://127.0.0.1:5173/swing-ai
+```
+
+The current local baseline runs a Python pose worker from the Node API. It uses MediaPipe for body keypoints and a local club detector. Keep sample videos, generated previews, and model files outside Git.
+
+Useful checks:
+
+```bash
+npm run check:pose -- --require-real /path/to/swing.mp4
+npm run inspect:pose -- --require-real /path/to/swing.mp4 /tmp/golflog-pose-quality.md
+npm run check:payload
+```

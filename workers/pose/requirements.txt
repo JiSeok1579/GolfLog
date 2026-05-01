@@ -1,2 +1,4 @@
-opencv-python
-mediapipe
+# Python 3.11 baseline for MediaPipe legacy mp.solutions on macOS arm64.
+numpy==1.26.4
+opencv-contrib-python==4.11.0.86
+mediapipe==0.10.21

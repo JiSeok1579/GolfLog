@@ -21,7 +21,7 @@ Install optional baseline dependencies:
 npm run setup:pose
 ```
 
-The Node API worker automatically prefers `.venv-pose/bin/python` when it exists, then falls back to `.venv/bin/python`, then `python3`.
+The setup script creates `.venv-pose` with Python 3.11 when available and pins the working macOS arm64 baseline: `mediapipe==0.10.21`, `opencv-contrib-python==4.11.0.86`, and `numpy==1.26.4`. The Node API worker automatically prefers `.venv-pose/bin/python` when it exists, then falls back to `.venv/bin/python`, then `python3`.
 
 Verify a local sample video:
 
@@ -50,7 +50,7 @@ python3 workers/pose/analyze_pose.py \
   --out /tmp/golflog-worker.json
 ```
 
-The worker runs MediaPipe in an isolated child process. If a native MediaPipe crash occurs, the parent process writes fallback pose frames instead of failing the whole API job. On the current Python 3.13 MediaPipe wheel, `mp.solutions` is not exposed; without an explicitly enabled Tasks runtime the worker uses fallback frames so the upload, job, normalization, and overlay pipeline remains usable.
+The worker runs MediaPipe in an isolated child process. If a native MediaPipe crash occurs, the parent process writes fallback pose frames instead of failing the whole API job. On the current Python 3.13 MediaPipe wheel, `mp.solutions` is not exposed; use `npm run setup:pose` so the worker runs through the Python 3.11 `.venv-pose` runtime. In restricted or non-GUI shells, macOS native graphics access can be blocked and MediaPipe may fall back even when the same command succeeds in the normal local environment.
 
 Useful runtime controls:
 

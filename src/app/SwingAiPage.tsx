@@ -1,9 +1,16 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent, type KeyboardEvent } from "react";
-import { Activity, Play, Upload } from "lucide-react";
+import { Activity, History, Play, Sparkles, Upload } from "lucide-react";
 import { Button } from "../components/ui/Button";
 import { Card } from "../components/ui/Card";
 import { Chip } from "../components/ui/Chip";
-import { createSwingAnalysis, fetchSwingAnalysis, fetchSwingAnalysisStatus } from "../data/api";
+import {
+  createSwingAnalysis,
+  fetchSwingAnalyses,
+  fetchSwingAnalysis,
+  fetchSwingAnalysisStatus,
+  swingAnalysisVideoUrl,
+  type SwingAnalysisListItem,
+} from "../data/api";
 import { CLUBS, clubLabel } from "../data/clubs";
 import { text, useLanguage } from "../data/i18n";
 import { newSwingAnalysisSchema, type Club, type SwingAnalysisResult, type SwingDominantHand, type SwingPose2DFrame, type SwingViewAngle } from "../data/schema";
@@ -97,6 +104,17 @@ function currentPhaseName(result: SwingAnalysisResult | null, currentTime: numbe
   return result.phases.find((phase) => targetFrame >= phase.startFrame && targetFrame <= phase.endFrame)?.name ?? "";
 }
 
+function formatAnalysisDate(value: string) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  return new Intl.DateTimeFormat(undefined, {
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    month: "2-digit",
+  }).format(date);
+}
+
 function activateWithKeyboard(event: KeyboardEvent<HTMLElement>, action: () => void) {
   if (event.key !== "Enter" && event.key !== " ") return;
   event.preventDefault();
@@ -111,11 +129,14 @@ export function SwingAiPage() {
   const { language } = useLanguage();
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const [videoFile, setVideoFile] = useState<File | null>(null);
-  const [videoPreviewUrl, setVideoPreviewUrl] = useState("");
+  const [localVideoPreviewUrl, setLocalVideoPreviewUrl] = useState("");
+  const [historyVideoUrl, setHistoryVideoUrl] = useState("");
   const [club, setClub] = useState<Club>("Driver");
   const [viewAngle, setViewAngle] = useState<SwingViewAngle>("down-the-line");
   const [dominantHand, setDominantHand] = useState<SwingDominantHand>("right");
   const [analysis, setAnalysis] = useState<SwingAnalysisResult | null>(null);
+  const [analysisHistory, setAnalysisHistory] = useState<SwingAnalysisListItem[]>([]);
+  const [historyLoading, setHistoryLoading] = useState(false);
   const [status, setStatus] = useState<"idle" | "queued" | "running" | "done">("idle");
   const [progress, setProgress] = useState(0);
   const [currentStage, setCurrentStage] = useState("");
@@ -124,16 +145,34 @@ export function SwingAiPage() {
 
   useEffect(() => {
     if (!videoFile) {
-      setVideoPreviewUrl("");
+      setLocalVideoPreviewUrl("");
       return;
     }
 
     const url = URL.createObjectURL(videoFile);
-    setVideoPreviewUrl(url);
+    setHistoryVideoUrl("");
+    setLocalVideoPreviewUrl(url);
     setCurrentTime(0);
     return () => URL.revokeObjectURL(url);
   }, [videoFile]);
 
+  const refreshAnalysisHistory = async () => {
+    setHistoryLoading(true);
+    try {
+      const response = await fetchSwingAnalyses();
+      setAnalysisHistory(response.analyses);
+    } catch {
+      setAnalysisHistory([]);
+    } finally {
+      setHistoryLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    void refreshAnalysisHistory();
+  }, []);
+
+  const videoPreviewUrl = localVideoPreviewUrl || historyVideoUrl;
   const frame = nearestFrame(analysis, currentTime);
   const activePhaseName = currentPhaseName(analysis, currentTime);
   const scoreRows = useMemo(
@@ -166,6 +205,60 @@ export function SwingAiPage() {
     if (phase) seekToFrame(phase.startFrame);
   };
 
+  const loadAnalysisResult = async (item: SwingAnalysisListItem) => {
+    if (item.status !== "completed") return;
+    setError("");
+    try {
+      const response = await fetchSwingAnalysis(item.id);
+      setVideoFile(null);
+      setHistoryVideoUrl(item.hasVideo ? swingAnalysisVideoUrl(item.id) : "");
+      setAnalysis(response.result);
+      setCurrentTime(0);
+      setProgress(100);
+      setCurrentStage("completed");
+      setStatus("done");
+    } catch {
+      setError(text(language, "분석 결과를 불러오지 못했습니다.", "Could not load the analysis result."));
+    }
+  };
+
+  const createSampleAnalysis = async () => {
+    setError("");
+    const parsed = newSwingAnalysisSchema.safeParse({
+      club,
+      dominantHand,
+      videoName: "sample-swing-analysis",
+      viewAngle,
+    });
+    if (!parsed.success) {
+      setError(text(language, "분석 조건을 다시 확인해주세요.", "Check the analysis options."));
+      return;
+    }
+
+    try {
+      setStatus("running");
+      setVideoFile(null);
+      setHistoryVideoUrl("");
+      setAnalysis(null);
+      setCurrentTime(0);
+      setProgress(0);
+      setCurrentStage("sample");
+      const response = await createSwingAnalysis(parsed.data);
+      if (response.result) {
+        setAnalysis(response.result);
+        setProgress(100);
+        setCurrentStage("completed");
+        setStatus("done");
+        void refreshAnalysisHistory();
+        return;
+      }
+      throw new Error("sample_analysis_failed");
+    } catch {
+      setStatus("idle");
+      setError(text(language, "예시 분석을 생성하지 못했습니다.", "Could not create the sample analysis."));
+    }
+  };
+
   const submit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     setError("");
@@ -189,6 +282,7 @@ export function SwingAiPage() {
 
     try {
       setStatus("running");
+      setHistoryVideoUrl("");
       setAnalysis(null);
       setProgress(0);
       setCurrentStage("");
@@ -200,6 +294,7 @@ export function SwingAiPage() {
         setAnalysis(response.result);
         setProgress(100);
         setStatus("done");
+        void refreshAnalysisHistory();
         return;
       }
 
@@ -218,6 +313,7 @@ export function SwingAiPage() {
           setAnalysis(resultResponse.result);
           setProgress(100);
           setStatus("done");
+          void refreshAnalysisHistory();
           return;
         }
         setStatus(statusResponse.status === "queued" ? "queued" : "running");
@@ -254,7 +350,15 @@ export function SwingAiPage() {
             <div className="form-grid">
               <label className="field">
                 {text(language, "영상 파일", "Video File")}
-                <input accept="video/*" onChange={(event) => setVideoFile(event.target.files?.[0] ?? null)} type="file" />
+                <input
+                  accept="video/*"
+                  onChange={(event) => {
+                    setAnalysis(null);
+                    setHistoryVideoUrl("");
+                    setVideoFile(event.target.files?.[0] ?? null);
+                  }}
+                  type="file"
+                />
               </label>
               <label className="field">
                 {text(language, "클럽", "Club")}
@@ -292,11 +396,46 @@ export function SwingAiPage() {
           {error ? <div className="form-error">{error}</div> : null}
 
           <div className="save-row">
+            <Button disabled={status === "running" || status === "queued"} onClick={createSampleAnalysis} type="button" variant="secondary">
+              <Sparkles size={16} />
+              {text(language, "예시 분석", "Sample")}
+            </Button>
             <Button disabled={status === "running" || status === "queued"} type="submit">
               <Play size={16} />
               {status === "running" || status === "queued" ? text(language, "분석 중", "Analyzing") : text(language, "분석 시작", "Start Analysis")}
             </Button>
           </div>
+
+          <Card className="swing-history-card">
+            <div className="card-title-row">
+              <div>
+                <p className="card-kicker">{text(language, "기록", "History")}</p>
+                <h2>{text(language, "최근 분석", "Recent Analyses")}</h2>
+              </div>
+              <History size={18} />
+            </div>
+            <div className="swing-history-list">
+              {analysisHistory.length > 0 ? (
+                analysisHistory.map((item) => (
+                  <button
+                    className={analysis?.id === item.id ? "swing-history-row is-active" : "swing-history-row"}
+                    disabled={item.status !== "completed"}
+                    key={item.id}
+                    onClick={() => loadAnalysisResult(item)}
+                    type="button"
+                  >
+                    <span>
+                      <strong>{item.input.videoName}</strong>
+                      <small>{formatAnalysisDate(item.updatedAt || item.createdAt)} · {clubLabel(item.input.club, language)}</small>
+                    </span>
+                    <Chip tone={item.hasVideo ? "accent" : undefined}>{item.status === "completed" ? item.scores?.overall ?? "OK" : item.status}</Chip>
+                  </button>
+                ))
+              ) : (
+                <div className="swing-history-empty">{historyLoading ? text(language, "불러오는 중", "Loading") : text(language, "기록 없음", "No records")}</div>
+              )}
+            </div>
+          </Card>
         </form>
 
         <Card className="swing-preview-card">

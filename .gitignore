@@ -6,6 +6,7 @@ dist/
 
 # Local environment and editor files
 .venv/
+.venv-pose/
 .env
 .env.*
 *.local

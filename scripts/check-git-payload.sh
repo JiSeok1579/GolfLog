@@ -5,7 +5,7 @@ blocked=()
 
 while IFS= read -r -d '' path; do
   case "$path" in
-    .venv/*|server-data/*|models/*|data/raw/*|data/external/*)
+    .venv/*|.venv-pose/*|server-data/*|models/*|data/raw/*|data/external/*)
       blocked+=("$path")
       ;;
     *.task|*.tflite|*.onnx|*.pt|*.pth|*.ckpt|*.h5|*.pb|*.mlmodel)

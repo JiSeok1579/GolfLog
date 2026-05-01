@@ -5,10 +5,12 @@
   "type": "module",
   "scripts": {
     "check:payload": "bash scripts/check-git-payload.sh",
+    "check:pose": "bash scripts/check-pose-runtime.sh",
     "dev": "vite --host 127.0.0.1",
     "dev:api": "node server/server.js",
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview --host 127.0.0.1",
+    "setup:pose": "bash scripts/setup-pose-runtime.sh",
     "start:api": "node server/server.js",
     "typecheck": "tsc --noEmit"
   },

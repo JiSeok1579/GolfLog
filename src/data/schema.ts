@@ -79,6 +79,14 @@ const swingPoint2DSchema = z.object({
   y: z.number().min(0).max(100),
 });
 
+const swingScoreSchema = z.object({
+  overall: z.number().min(0).max(100),
+  setup: z.number().min(0).max(100),
+  backswing: z.number().min(0).max(100),
+  impact: z.number().min(0).max(100),
+  balance: z.number().min(0).max(100),
+});
+
 export const swingKeypoint2DSchema = swingPoint2DSchema.extend({
   name: swingKeypointNameSchema,
   score: z.number().min(0).max(1),
@@ -143,14 +151,13 @@ export const swingAnalysisResultSchema = z.object({
     spineAngleDeg: z.number(),
     clubPath: z.enum(["in-to-out", "neutral", "out-to-in"]),
   }),
-  scores: z.object({
-    overall: z.number().min(0).max(100),
-    setup: z.number().min(0).max(100),
-    backswing: z.number().min(0).max(100),
-    impact: z.number().min(0).max(100),
-    balance: z.number().min(0).max(100),
-  }),
+  scores: swingScoreSchema,
   recommendations: z.array(swingRecommendationSchema),
+  metricBaselines: z
+    .object({
+      scores: swingScoreSchema,
+    })
+    .optional(),
 });
 
 export const newSwingAnalysisSchema = z.object({

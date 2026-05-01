@@ -69,6 +69,7 @@
 - [x] 수동 보정된 club grip/head를 `clubPath`, Impact 점수, 클럽 경로 추천에 재반영
 - [x] OpenCV 기반 클럽 shaft 후보 검출로 실제 프레임의 `club.grip/head` 우선 추출
 - [x] 전용 학습 모델을 Git 외부에서 연결하는 club detector adapter 계약 추가
+- [x] phase 보정 후 tempo, club path, Impact 점수, 추천 문구 재계산 정합성 보강
 - [ ] 전용 학습 모델 기반 club head/grip 실제 연결 및 OpenCV 대비 평가
 
 예시 데이터 운영 원칙:
@@ -85,6 +86,7 @@
 - `npm run inspect:pose -- --require-real /tmp/golfdb-test-video.mp4 /tmp/golflog-pose-quality.md`로 keypoint별 저신뢰/누락/점프 프레임을 로컬 Markdown/JSON으로 기록한다.
 - 현재 로컬 샘플 QA 기준으로 missing keypoint와 large jump는 없고, `left_elbow`/`left_wrist`만 각각 14/44 sampled frames에서 confidence 0.2 미만으로 떨어진다. 클럽 grip/head 보정은 손목 confidence가 낮은 구간을 우선 대상으로 둔다.
 - 수동 클럽 보정은 phase 경계를 자동으로 다시 자르지 않는다. phase는 사용자가 보정했을 수 있으므로 현재 단계에서는 `clubPath`, Impact 점수, 추천 문구만 다시 계산한다.
+- 수동 phase 보정 저장 시에도 tempo ratio, Impact 구간 기준 club path, Impact/Overall 점수, club path 추천 문구를 다시 계산한다. 최초 점수 baseline을 보존해 같은 보정을 반복 저장해도 점수가 drift되지 않게 한다.
 - MediaPipe body keypoint가 잡힌 프레임에서는 worker가 손목 주변 ROI에서 OpenCV Hough line 기반 클럽 shaft 후보를 먼저 찾고, 실패한 프레임만 기존 손목 기반 가상 클럽 추정값으로 채운다.
 - 전용 club 모델은 `GOLFLOG_CLUB_DETECTOR_COMMAND`로 로컬 명령을 연결하며, 모델 가중치와 데이터는 `/Volumes/X31/golflog-data/models/` 등 Git 밖에 둔다. 외부 모델이 없거나 실패하면 `auto` mode에서 OpenCV detector로 fallback한다.
 - `npm run inspect:pose` 리포트는 club detector source count, low-score frame, head jump를 함께 출력한다.
@@ -162,5 +164,5 @@
 ## 다음 실행 순서
 
 1. 전용 club 모델 command 구현 또는 확보 후 `GOLFLOG_CLUB_DETECTOR_COMMAND`로 실제 연결
-2. phase별 추천 문구와 보정된 구간 기준 리포트 정합성 점검
-3. GolfDB/SwingNet 계열 phase 모델 검토 및 교체 가능성 평가
+2. GolfDB/SwingNet 계열 phase 모델 검토 및 교체 가능성 평가
+3. 실제 본인 스윙 영상으로 keypoint, club path, phase 보정 workflow 검증

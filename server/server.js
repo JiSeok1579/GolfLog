@@ -740,6 +740,36 @@ function normalizeAnalysisClubCorrection(analysis, body) {
   };
 }
 
+function scoreSnapshot(scores) {
+  if (!scores || typeof scores !== "object") return null;
+  const next = {};
+  for (const key of ["overall", "setup", "backswing", "impact", "balance"]) {
+    const value = Number(scores[key]);
+    if (!Number.isFinite(value)) return null;
+    next[key] = Math.round(clampNumber(value, 0, 100));
+  }
+  return next;
+}
+
+function withMetricBaselines(analysis) {
+  const existingScores = scoreSnapshot(analysis.metricBaselines?.scores);
+  if (existingScores) return analysis;
+
+  const scores = scoreSnapshot(analysis.scores);
+  if (!scores) return analysis;
+  return {
+    ...analysis,
+    metricBaselines: {
+      ...(analysis.metricBaselines || {}),
+      scores,
+    },
+  };
+}
+
+function scoreBaseline(analysis) {
+  return scoreSnapshot(analysis.metricBaselines?.scores) || scoreSnapshot(analysis.scores) || analysis.scores;
+}
+
 function poseFrameClubHead(frame) {
   if (!frame?.club || frame.club.score < 0.25) return null;
   return frame.club.head;
@@ -784,13 +814,31 @@ function clubPathScore(clubPath) {
   return scores[clubPath] || scores.neutral;
 }
 
+function tempoRatioFromPhases(phases) {
+  const address = phases.find((phase) => phase.name === "address");
+  const top = phases.find((phase) => phase.name === "backswing_top");
+  const impact = phases.find((phase) => phase.name === "impact");
+  if (!address || !top || !impact) return 0;
+
+  const backswingFrames = Math.max(top.endFrame - address.startFrame, 1);
+  const downswingFrames = Math.max(impact.startFrame - top.endFrame, 1);
+  return Number(clampNumber(backswingFrames / downswingFrames, 0.5, 5).toFixed(1));
+}
+
 function recomputeScoresForClubPath(scores, clubPath) {
-  const impact = Math.round(clampNumber(scores.impact * 0.65 + clubPathScore(clubPath) * 0.35, 0, 100));
+  const base = scoreSnapshot(scores) || {
+    backswing: 0,
+    balance: 0,
+    impact: 0,
+    overall: 0,
+    setup: 0,
+  };
+  const impact = Math.round(clampNumber(base.impact * 0.65 + clubPathScore(clubPath) * 0.35, 0, 100));
   const overall = Math.round(
-    clampNumber(scores.setup * 0.2 + scores.backswing * 0.25 + impact * 0.35 + scores.balance * 0.2, 0, 100),
+    clampNumber(base.setup * 0.2 + base.backswing * 0.25 + impact * 0.35 + base.balance * 0.2, 0, 100),
   );
   return {
-    ...scores,
+    ...base,
     impact,
     overall,
   };
@@ -800,19 +848,19 @@ function clubPathRecommendation(user, analysis, clubPath) {
   const phase = analysis.phases.some((item) => item.name === "impact") ? "impact" : "downswing";
   const guidance = {
     "in-to-out": {
-      detail: `${user.name}님의 보정된 클럽 head 기준 화면상 클럽 경로는 in-to-out에 가깝습니다. 과도해지면 출발 방향과 페이스 관리가 흔들릴 수 있으니 임팩트 직전 손목 릴리즈를 일정하게 유지하세요.`,
+      detail: `${user.name}님의 현재 클럽 head 기준 화면상 클럽 경로는 in-to-out에 가깝습니다. 과도해지면 출발 방향과 페이스 관리가 흔들릴 수 있으니 임팩트 직전 손목 릴리즈를 일정하게 유지하세요.`,
       drill: "얼라인먼트 스틱을 목표선에 두고 50% 속도로 임팩트 전후 클럽 head가 같은 폭 안에서 지나가게 연습하세요.",
       severity: "info",
-      title: "보정된 클럽 경로를 유지하세요",
+      title: "클럽 경로를 유지하세요",
     },
     neutral: {
-      detail: `${user.name}님의 보정된 클럽 head 기준 화면상 클럽 경로는 neutral에 가깝습니다. 현재는 경로보다 임팩트 전후 재현성을 우선 확인하는 것이 좋습니다.`,
+      detail: `${user.name}님의 현재 클럽 head 기준 화면상 클럽 경로는 neutral에 가깝습니다. 현재는 경로보다 임팩트 전후 재현성을 우선 확인하는 것이 좋습니다.`,
       drill: "짧은 하프스윙으로 임팩트 전후 클럽 head 위치가 반복되는지 5회씩 확인하세요.",
       severity: "info",
       title: "임팩트 전후 클럽 경로가 안정적입니다",
     },
     "out-to-in": {
-      detail: `${user.name}님의 보정된 클럽 head 기준 화면상 클럽 경로는 out-to-in에 가깝습니다. 단일 카메라 2D 추정값이므로 실제 구질과 함께 확인하되, 깎여 맞는 흐름이면 다운스윙 진입 각도를 줄이는 것이 좋습니다.`,
+      detail: `${user.name}님의 현재 클럽 head 기준 화면상 클럽 경로는 out-to-in에 가깝습니다. 단일 카메라 2D 추정값이므로 실제 구질과 함께 확인하되, 깎여 맞는 흐름이면 다운스윙 진입 각도를 줄이는 것이 좋습니다.`,
       drill: "다운스윙 시작 때 손보다 하체 회전을 먼저 열고, 임팩트 백 안쪽 면을 스치듯 치는 드릴을 진행하세요.",
       severity: "warning",
       title: "아웃-투-인 경로를 점검하세요",
@@ -842,20 +890,29 @@ function upsertClubPathRecommendation(recommendations, recommendation) {
   return next;
 }
 
-function refreshClubCorrectionMetrics(analysis, user) {
-  const clubPath = estimateAnalysisClubPath(analysis);
+function refreshAnalysisReportMetrics(analysis, user) {
+  const baselineAnalysis = withMetricBaselines(analysis);
+  const tempoRatio = tempoRatioFromPhases(baselineAnalysis.phases);
+  const phaseAdjusted = {
+    ...baselineAnalysis,
+    features: {
+      ...baselineAnalysis.features,
+      tempoRatio,
+    },
+  };
+  const clubPath = estimateAnalysisClubPath(phaseAdjusted);
   const features = {
-    ...analysis.features,
+    ...phaseAdjusted.features,
     clubPath,
   };
   return {
-    ...analysis,
+    ...phaseAdjusted,
     features,
     recommendations: upsertClubPathRecommendation(
-      analysis.recommendations,
-      clubPathRecommendation(user, { ...analysis, features }, clubPath),
+      phaseAdjusted.recommendations,
+      clubPathRecommendation(user, { ...phaseAdjusted, features }, clubPath),
     ),
-    scores: recomputeScoresForClubPath(analysis.scores, clubPath),
+    scores: recomputeScoresForClubPath(scoreBaseline(phaseAdjusted), clubPath),
   };
 }
 
@@ -1228,11 +1285,16 @@ async function handleApi(req, res) {
     }
 
     const now = new Date().toISOString();
-    const updated = updateAnalysisForUser(store, auth.user.id, analysisId, (current) => ({
-      ...current,
-      phases,
-      updatedAt: now,
-    }));
+    const updated = updateAnalysisForUser(store, auth.user.id, analysisId, (current) =>
+      refreshAnalysisReportMetrics(
+        {
+          ...current,
+          phases,
+          updatedAt: now,
+        },
+        auth.user,
+      ),
+    );
     if (!updated) {
       sendJson(res, 404, { error: "analysis_not_found" });
       return;
@@ -1286,7 +1348,7 @@ async function handleApi(req, res) {
         ),
         updatedAt: now,
       };
-      return refreshClubCorrectionMetrics(corrected, auth.user);
+      return refreshAnalysisReportMetrics(corrected, auth.user);
     });
     if (!updated) {
       sendJson(res, 404, { error: "analysis_not_found" });

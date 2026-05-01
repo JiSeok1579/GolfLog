@@ -1754,6 +1754,78 @@ main {
   margin: 12px 0;
 }
 
+.personalization-readiness-panel {
+  background: var(--w-paper-2);
+  border: 1px solid var(--w-line);
+  border-left: 4px solid var(--w-muted);
+  border-radius: 7px;
+  display: grid;
+  gap: 10px;
+  margin: 0 0 12px;
+  padding: 11px 12px;
+}
+
+.personalization-readiness-panel[data-status="limited"] {
+  border-left-color: var(--w-accent);
+}
+
+.personalization-readiness-panel[data-status="sufficient"] {
+  border-left-color: var(--w-fairway-light);
+}
+
+.personalization-readiness-head {
+  align-items: center;
+  display: flex;
+  gap: 10px;
+  justify-content: space-between;
+}
+
+.personalization-readiness-head span,
+.personalization-readiness-grid span {
+  color: var(--w-muted);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  text-transform: uppercase;
+}
+
+.personalization-readiness-head strong {
+  color: var(--w-ink);
+  font-family: var(--font-display);
+  font-size: 26px;
+  font-weight: 400;
+  line-height: 1;
+}
+
+.personalization-readiness-panel p,
+.historical-empty p {
+  color: var(--w-ink-soft);
+  line-height: 1.5;
+  margin: 0;
+}
+
+.historical-empty p {
+  margin-top: 8px;
+}
+
+.personalization-readiness-grid {
+  display: grid;
+  gap: 8px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.personalization-readiness-grid div {
+  border-top: 1px solid var(--w-line);
+  display: grid;
+  gap: 4px;
+  padding-top: 8px;
+}
+
+.personalization-readiness-grid strong {
+  color: var(--w-ink);
+  font-family: var(--font-mono);
+  font-size: 13px;
+}
+
 .historical-detail-panel {
   background: var(--w-paper-2);
   border: 1px solid var(--w-line);
@@ -2155,6 +2227,45 @@ main {
   text-transform: uppercase;
 }
 
+.recommendation-follow-up-panel,
+.recommendation-follow-up-note {
+  background: rgba(139, 220, 142, 0.07);
+  border: 1px solid rgba(139, 220, 142, 0.22);
+  border-radius: 7px;
+  display: grid;
+  gap: 5px;
+  padding: 9px 10px;
+}
+
+.recommendation-follow-up-note {
+  background: rgba(191, 109, 74, 0.1);
+  border-color: rgba(191, 109, 74, 0.3);
+}
+
+.recommendation-follow-up-panel span {
+  color: var(--w-muted);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  text-transform: uppercase;
+}
+
+.recommendation-follow-up-panel strong {
+  color: var(--w-ink);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  text-transform: uppercase;
+}
+
+.recommendation-follow-up-panel p,
+.recommendation-follow-up-note {
+  color: var(--w-ink-soft) !important;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  line-height: 1.45;
+  margin: 0;
+  text-transform: uppercase;
+}
+
 .recommendation-phase-button {
   justify-self: start;
 }
@@ -2344,6 +2455,7 @@ main {
   .coach-score-breakdown,
   .historical-detail-grid,
   .historical-match-grid,
+  .personalization-readiness-grid,
   .swing-ai-grid,
   .swing-result-grid {
     grid-template-columns: 1fr;

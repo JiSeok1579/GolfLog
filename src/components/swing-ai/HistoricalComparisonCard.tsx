@@ -1,7 +1,7 @@
 import { BarChart3 } from "lucide-react";
 import { Card } from "../ui/Card";
 import { Chip } from "../ui/Chip";
-import type { SwingAnalysisResult } from "../../data/schema";
+import type { SwingAnalysisResult, SwingPersonalizationReadiness } from "../../data/schema";
 import { qualityForAnalysis } from "./AnalysisQualityBadge";
 
 type Language = "ko" | "en";
@@ -35,10 +35,17 @@ function recordMetrics(record: HistoricalRecord) {
     });
 }
 
+function readinessTone(status: SwingPersonalizationReadiness["status"]) {
+  if (status === "sufficient") return "fairway";
+  if (status === "limited") return "accent";
+  return undefined;
+}
+
 export function HistoricalComparisonCard({ analysis, language }: { analysis: SwingAnalysisResult; language: Language }) {
   const quality = qualityForAnalysis(analysis);
   const comparison = analysis.historicalComparison;
   const unavailable = quality.isFallback;
+  const readiness = comparison?.personalizationReadiness;
 
   return (
     <Card className="historical-comparison-card">
@@ -50,18 +57,47 @@ export function HistoricalComparisonCard({ analysis, language }: { analysis: Swi
         <BarChart3 size={18} />
       </div>
       {unavailable ? (
-        <div className="historical-empty">{label(language, "fallback/예시 분석은 개인 기록과 비교하지 않습니다.", "Fallback/sample analysis is not compared against personal history.")}</div>
+        <div className="historical-empty">
+          {label(language, "fallback/예시 분석은 개인 기록과 비교하지 않습니다.", "Fallback/sample analysis is not compared against personal history.")}
+          {readiness?.message ? <p>{readiness.message}</p> : null}
+        </div>
       ) : comparison ? (
         <>
           <div className="historical-summary-row">
             <Chip tone={comparison.dataSufficiency === "sufficient" ? "fairway" : comparison.dataSufficiency === "limited" ? "accent" : undefined}>
               {comparison.baselineType}
             </Chip>
+            {readiness ? <Chip tone={readinessTone(readiness.status)}>{readiness.status} readiness</Chip> : null}
             <Chip>{comparison.sampleSize} samples</Chip>
             <Chip>{dateRangeLabel(comparison, language)}</Chip>
             {typeof comparison.similarityScore === "number" ? <Chip tone="fairway">{comparison.similarityScore}% similarity</Chip> : null}
           </div>
           <p className="historical-summary">{comparison.summary}</p>
+          {readiness ? (
+            <div className="personalization-readiness-panel" data-status={readiness.status}>
+              <div className="personalization-readiness-head">
+                <span>{label(language, "개인화 준비도", "Personalization readiness")}</span>
+                <strong>
+                  {readiness.currentSampleSize}/{readiness.requiredForSufficient}
+                </strong>
+              </div>
+              <p>{readiness.message}</p>
+              <div className="personalization-readiness-grid">
+                <div>
+                  <span>{label(language, "Limited 기준", "Limited target")}</span>
+                  <strong>{readiness.requiredForLimited}</strong>
+                </div>
+                <div>
+                  <span>{label(language, "Sufficient 기준", "Sufficient target")}</span>
+                  <strong>{readiness.requiredForSufficient}</strong>
+                </div>
+                <div>
+                  <span>{label(language, "다음 단계까지", "To next level")}</span>
+                  <strong>{readiness.missingCountForNextLevel}</strong>
+                </div>
+              </div>
+            </div>
+          ) : null}
           <details className="historical-detail-panel">
             <summary>{label(language, "비교 근거 보기", "View comparison details")}</summary>
             <div className="historical-detail-grid">

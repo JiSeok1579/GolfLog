@@ -127,6 +127,15 @@ const swingScoreEvidenceSchema = z.object({
   phaseScores: z.record(z.string(), swingScoreEvidenceItemSchema).optional(),
 });
 
+const swingPersonalizationReadinessSchema = z.object({
+  status: z.enum(["insufficient", "limited", "sufficient"]),
+  currentSampleSize: z.number().int().nonnegative(),
+  requiredForLimited: z.number().int().positive(),
+  requiredForSufficient: z.number().int().positive(),
+  missingCountForNextLevel: z.number().int().nonnegative(),
+  message: z.string(),
+});
+
 const swingHistoricalComparisonSchema = z.object({
   club: clubSchema,
   sampleSize: z.number().int().nonnegative(),
@@ -136,6 +145,7 @@ const swingHistoricalComparisonSchema = z.object({
   positiveMatches: z.array(z.string()),
   negativeMatches: z.array(z.string()),
   dataSufficiency: z.enum(["sufficient", "limited", "insufficient"]),
+  personalizationReadiness: swingPersonalizationReadinessSchema.optional(),
   dateRange: z
     .object({
       start: z.string().optional(),
@@ -157,6 +167,15 @@ const swingHistoricalComparisonSchema = z.object({
       }),
     )
     .optional(),
+});
+
+const swingRecommendationFollowUpSchema = z.object({
+  recommendationId: z.string(),
+  status: z.enum(["new", "practiced", "ignored"]),
+  linkedFutureSessionIds: z.array(z.string()),
+  beforeMetrics: z.record(z.string(), z.union([z.number(), z.string()])).optional(),
+  afterMetrics: z.record(z.string(), z.union([z.number(), z.string()])).optional(),
+  note: z.string().optional(),
 });
 
 export const swingKeypoint2DSchema = swingPoint2DSchema.extend({
@@ -263,6 +282,7 @@ export const swingAnalysisResultSchema = z.object({
   bodyMovementScores: swingBodyMovementScoreSchema.optional(),
   scoreEvidence: swingScoreEvidenceSchema.optional(),
   historicalComparison: swingHistoricalComparisonSchema.optional(),
+  recommendationFollowUps: z.array(swingRecommendationFollowUpSchema).optional(),
   recommendations: z.array(swingRecommendationSchema),
   metricBaselines: z
     .object({
@@ -309,6 +329,8 @@ export type SwingPhaseScores = z.infer<typeof swingPhaseScoreSchema>;
 export type SwingBodyMovementScores = z.infer<typeof swingBodyMovementScoreSchema>;
 export type SwingScoreEvidence = z.infer<typeof swingScoreEvidenceSchema>;
 export type SwingHistoricalComparison = z.infer<typeof swingHistoricalComparisonSchema>;
+export type SwingPersonalizationReadiness = z.infer<typeof swingPersonalizationReadinessSchema>;
+export type SwingRecommendationFollowUp = z.infer<typeof swingRecommendationFollowUpSchema>;
 export type SwingAnalysisResult = z.infer<typeof swingAnalysisResultSchema>;
 export type NewSwingAnalysisInput = z.infer<typeof newSwingAnalysisSchema>;
 export type AppData = z.infer<typeof appDataSchema>;

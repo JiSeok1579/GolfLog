@@ -1,6 +1,8 @@
 import { computeCoachScores } from "./metrics.js";
 
 const historicalMetricKeys = ["carryM", "totalM", "sideDeviationM", "headSpeed", "launchAngle"];
+const requiredForLimited = 3;
+const requiredForSufficient = 8;
 
 function numberOrNull(value) {
   const number = Number(value);
@@ -33,8 +35,8 @@ function sameClubShots(appData, club) {
 }
 
 function dataSufficiency(sampleSize) {
-  if (sampleSize >= 8) return "sufficient";
-  if (sampleSize >= 3) return "limited";
+  if (sampleSize >= requiredForSufficient) return "sufficient";
+  if (sampleSize >= requiredForLimited) return "limited";
   return "insufficient";
 }
 
@@ -85,6 +87,34 @@ function historicalRecord(shot) {
       sessionId: shot.sessionId,
     },
   );
+}
+
+function buildPersonalizationReadiness({ analysis, sampleSize, sufficiency }) {
+  const currentSampleSize = analysis.analysisQuality?.isFallback ? 0 : sampleSize;
+  const status = analysis.analysisQuality?.isFallback ? "insufficient" : sufficiency;
+  const nextTarget = status === "sufficient" ? requiredForSufficient : status === "limited" ? requiredForSufficient : requiredForLimited;
+  const missingCountForNextLevel = Math.max(0, nextTarget - currentSampleSize);
+  const club = analysis.input.club;
+  let message;
+
+  if (analysis.analysisQuality?.isFallback) {
+    message = "Fallback or sample analysis is not eligible for personalization readiness. Re-run with real pose analysis before tracking personal progress.";
+  } else if (status === "sufficient") {
+    message = `You have enough same-club ${club} records for provisional personalization. Recommendations can use historical context alongside the 2D pose proxy analysis.`;
+  } else if (status === "limited") {
+    message = `You have limited same-club ${club} history. Recommendations are still mostly 2D pose-proxy based; add ${missingCountForNextLevel} more same-club records to reach sufficient personalization.`;
+  } else {
+    message = `You need ${missingCountForNextLevel} more same-club ${club} records to reach limited personalization. Current recommendations are mostly 2D pose-proxy based.`;
+  }
+
+  return {
+    currentSampleSize,
+    message,
+    missingCountForNextLevel,
+    requiredForLimited,
+    requiredForSufficient,
+    status,
+  };
 }
 
 function isClubPathOrImpactRecommendation(recommendation) {
@@ -153,6 +183,40 @@ function withRecommendationConfidence(recommendations, analysisQuality) {
   }));
 }
 
+function recommendationBeforeMetrics(recommendation, analysis) {
+  const proxyMetrics = analysis.features?.proxyMetrics || {};
+  return {
+    clubPath: analysis.features?.clubPath || "unknown",
+    club_detection_rate: Number(analysis.analysisQuality?.clubDetectionRate ?? proxyMetrics.club_detection_rate ?? 0),
+    head_sway_proxy: Number(proxyMetrics.head_sway_proxy ?? analysis.features?.headSwayCm ?? 0),
+    impactScore: Number(analysis.scores?.impact ?? 0),
+    metric: recommendation.metric,
+    overallScore: Number(analysis.scores?.overall ?? 0),
+    phase: recommendation.phase,
+    pose_confidence: Number(analysis.analysisQuality?.poseConfidence ?? proxyMetrics.pose_confidence ?? 0),
+    recommendationValue: recommendation.value,
+  };
+}
+
+function buildRecommendationFollowUps(analysis) {
+  if (analysis.analysisQuality?.isFallback) {
+    return [];
+  }
+
+  const existing = new Map((analysis.recommendationFollowUps || []).map((item) => [item.recommendationId, item]));
+  return (analysis.recommendations || []).map((recommendation) => {
+    const previous = existing.get(recommendation.id) || {};
+    return {
+      afterMetrics: previous.afterMetrics || {},
+      beforeMetrics: previous.beforeMetrics || recommendationBeforeMetrics(recommendation, analysis),
+      linkedFutureSessionIds: previous.linkedFutureSessionIds || [],
+      note: previous.note || "",
+      recommendationId: recommendation.id,
+      status: previous.status || "new",
+    };
+  });
+}
+
 function buildHistoricalSummary({ analysis, sampleSize, sufficiency }) {
   const club = analysis.input.club;
   if (analysis.analysisQuality?.isFallback) {
@@ -183,6 +247,7 @@ export function buildHistoricalComparison({ analysis, appData }) {
       dataSufficiency: sufficiency,
       metricsUsed: [],
       negativeMatches: ["Fallback or generated sample analysis is not compared against personal history."],
+      personalizationReadiness: buildPersonalizationReadiness({ analysis, sampleSize, sufficiency }),
       positiveMatches,
       recordsUsed: [],
       sampleSize,
@@ -250,6 +315,7 @@ export function buildHistoricalComparison({ analysis, appData }) {
     ...(historicalDateRange(shots) ? { dateRange: historicalDateRange(shots) } : {}),
     metricsUsed: historicalMetricsUsed(shots),
     negativeMatches: negativeMatches.slice(0, 4),
+    personalizationReadiness: buildPersonalizationReadiness({ analysis, sampleSize, sufficiency }),
     positiveMatches: positiveMatches.slice(0, 4),
     recordsUsed: shots.map(historicalRecord),
     sampleSize,
@@ -275,5 +341,6 @@ export function withCoachReport(analysis, appData) {
   return {
     ...analysisWithRecommendations,
     historicalComparison: buildHistoricalComparison({ analysis: analysisWithRecommendations, appData }),
+    recommendationFollowUps: buildRecommendationFollowUps(analysisWithRecommendations),
   };
 }

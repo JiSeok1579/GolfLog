@@ -3,6 +3,7 @@ import argparse
 import json
 import math
 import os
+import shlex
 import subprocess
 import sys
 import tempfile
@@ -37,6 +38,8 @@ def parse_args():
     parser.add_argument("--view-angle", default="down-the-line")
     parser.add_argument("--club-type", default="Driver")
     parser.add_argument("--dominant-hand", default="right")
+    parser.add_argument("--club-detector", choices=["auto", "opencv", "external", "off"], default=os.environ.get("GOLFLOG_CLUB_DETECTOR", "auto"))
+    parser.add_argument("--club-detector-command", default=os.environ.get("GOLFLOG_CLUB_DETECTOR_COMMAND"))
     parser.add_argument("--landmarker-model", default=None)
     parser.add_argument("--max-frames", type=int, default=140)
     parser.add_argument("--mediapipe-child", action="store_true", help=argparse.SUPPRESS)
@@ -53,6 +56,14 @@ def clamp(value, low, high):
 
 def distance(a, b):
     return math.hypot(a[0] - b[0], a[1] - b[1])
+
+
+def finite_float(value):
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return None
+    return number if math.isfinite(number) else None
 
 
 def keypoint_xy(keypoints, name, min_score=0.2):
@@ -117,6 +128,146 @@ def point_in_box(point, box):
     if not box:
         return False
     return box[0] <= point[0] <= box[2] and box[1] <= point[1] <= box[3]
+
+
+def club_detector_debug(args):
+    return {
+        "mode": args.club_detector,
+        "externalConfigured": bool(args.club_detector_command),
+        "externalDetectedFrames": 0,
+        "externalFailedFrames": 0,
+        "opencvDetectedFrames": 0,
+    }
+
+
+def club_point_from_payload(value):
+    if isinstance(value, dict):
+        x = finite_float(value.get("x"))
+        y = finite_float(value.get("y"))
+    elif isinstance(value, (list, tuple)) and len(value) >= 2:
+        x = finite_float(value[0])
+        y = finite_float(value[1])
+    else:
+        return None
+
+    if x is None or y is None:
+        return None
+    return (x, y)
+
+
+def normalize_club_payload(payload, width, height, source):
+    if not isinstance(payload, dict):
+        return None
+    raw_club = payload.get("club") if isinstance(payload.get("club"), dict) else payload
+    grip = club_point_from_payload(raw_club.get("grip"))
+    head = club_point_from_payload(raw_club.get("head"))
+    if not grip or not head:
+        return None
+
+    score = finite_float(raw_club.get("score", raw_club.get("confidence", 1.0)))
+    if score is None:
+        score = 1.0
+
+    detected_source = str(raw_club.get("source") or payload.get("source") or source)
+    return {
+        "grip": {
+            "x": round(clamp(grip[0], 0, width), 2),
+            "y": round(clamp(grip[1], 0, height), 2),
+        },
+        "head": {
+            "x": round(clamp(head[0], 0, width), 2),
+            "y": round(clamp(head[1], 0, height), 2),
+        },
+        "score": round(clamp(score, 0.0, 1.0), 3),
+        "source": detected_source,
+    }
+
+
+def run_external_club_detector(image, keypoints, frame_index, total_frames, args):
+    if not args.club_detector_command:
+        return None, "external_command_missing"
+
+    try:
+        import cv2
+    except Exception as exc:
+        return None, f"opencv_unavailable:{type(exc).__name__}"
+
+    command = shlex.split(args.club_detector_command)
+    if not command:
+        return None, "external_command_empty"
+
+    height, width = image.shape[:2]
+    frame_path = None
+    pose_path = None
+    try:
+        frame_file = tempfile.NamedTemporaryFile(prefix="golflog-club-frame-", suffix=".jpg", delete=False)
+        frame_path = frame_file.name
+        frame_file.close()
+        if not cv2.imwrite(frame_path, image):
+            return None, "frame_write_failed"
+
+        pose_file = tempfile.NamedTemporaryFile(prefix="golflog-club-pose-", suffix=".json", mode="w", encoding="utf-8", delete=False)
+        pose_path = pose_file.name
+        json.dump(
+            {
+                "frame": frame_index,
+                "totalFrames": total_frames,
+                "width": width,
+                "height": height,
+                "viewAngle": args.view_angle,
+                "clubType": args.club_type,
+                "dominantHand": args.dominant_hand,
+                "keypoints": keypoints,
+            },
+            pose_file,
+            ensure_ascii=False,
+        )
+        pose_file.close()
+
+        timeout = max(1, int(os.environ.get("GOLFLOG_CLUB_DETECTOR_TIMEOUT_SEC", "8")))
+        completed = subprocess.run(
+            command,
+            cwd=str(Path(__file__).resolve().parents[2]),
+            env={
+                **os.environ,
+                "GOLFLOG_CLUB_FRAME_IMAGE": frame_path,
+                "GOLFLOG_CLUB_POSE_JSON": pose_path,
+                "GOLFLOG_CLUB_FRAME_INDEX": str(frame_index),
+                "GOLFLOG_CLUB_TOTAL_FRAMES": str(total_frames),
+                "GOLFLOG_CLUB_FRAME_WIDTH": str(width),
+                "GOLFLOG_CLUB_FRAME_HEIGHT": str(height),
+                "GOLFLOG_CLUB_VIEW_ANGLE": args.view_angle,
+                "GOLFLOG_CLUB_TYPE": args.club_type,
+                "GOLFLOG_DOMINANT_HAND": args.dominant_hand,
+            },
+            stderr=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            text=True,
+            timeout=timeout,
+        )
+        if completed.returncode != 0:
+            stderr = (completed.stderr or completed.stdout or "").strip().splitlines()
+            reason = stderr[-1] if stderr else f"exit_code_{completed.returncode}"
+            return None, f"external_failed:{completed.returncode}:{reason}"
+
+        payload = json.loads(completed.stdout or "{}")
+        club = normalize_club_payload(payload, width, height, "external")
+        if not club:
+            return None, "external_invalid_payload"
+        return club, None
+    except subprocess.TimeoutExpired:
+        return None, "external_timeout"
+    except json.JSONDecodeError as exc:
+        return None, f"external_invalid_json:{exc.msg}"
+    except Exception as exc:
+        return None, f"external_error:{type(exc).__name__}:{exc}"
+    finally:
+        for path in (frame_path, pose_path):
+            if path:
+                try:
+                    Path(path).unlink()
+                except OSError:
+                    pass
 
 
 def detect_club_from_frame(image, keypoints, frame_index, total_frames):
@@ -217,7 +368,34 @@ def detect_club_from_frame(image, keypoints, frame_index, total_frames):
             "y": round(clamp(best["head"][1], 0, height), 2),
         },
         "score": round(clamp(best["score"], 0.25, 0.92), 3),
+        "source": "opencv",
     }
+
+
+def detect_club_for_frame(image, keypoints, frame_index, total_frames, args, debug):
+    if args.club_detector == "off":
+        return None
+
+    if args.club_detector in ("auto", "external"):
+        if args.club_detector_command:
+            club, error = run_external_club_detector(image, keypoints, frame_index, total_frames, args)
+            if club:
+                debug["externalDetectedFrames"] += 1
+                return club
+            debug["externalFailedFrames"] += 1
+            if error and not debug.get("externalLastError"):
+                debug["externalLastError"] = error[:180]
+        elif args.club_detector == "external":
+            debug["externalFailedFrames"] += 1
+            debug.setdefault("externalLastError", "external_command_missing")
+
+    if args.club_detector in ("auto", "opencv"):
+        club = detect_club_from_frame(image, keypoints, frame_index, total_frames)
+        if club:
+            debug["opencvDetectedFrames"] += 1
+        return club
+
+    return None
 
 
 def video_metadata(video_path):
@@ -285,6 +463,7 @@ def fallback_result(args, reason):
     return {
         "debug": {
             "clubDetectedFrames": 0,
+            "clubDetector": club_detector_debug(args),
             "droppedFrames": 0,
             "fallbackReason": reason,
             "frameCount": total_frames,
@@ -369,12 +548,16 @@ def child_args(args, output_path):
         args.club_type,
         "--dominant-hand",
         args.dominant_hand,
+        "--club-detector",
+        args.club_detector,
         "--max-frames",
         str(args.max_frames),
         "--mediapipe-child",
     ]
     if args.landmarker_model:
         command.extend(["--landmarker-model", args.landmarker_model])
+    if args.club_detector_command:
+        command.extend(["--club-detector-command", args.club_detector_command])
     return command
 
 
@@ -439,6 +622,7 @@ def mediapipe_solutions_result(args, cv2, mp):
 
     frames = []
     dropped_frames = 0
+    club_debug = club_detector_debug(args)
     frame_index = 0
 
     try:
@@ -475,7 +659,7 @@ def mediapipe_solutions_result(args, cv2, mp):
                 "time": round(frame_index / fps, 4),
                 "keypoints": keypoints,
             }
-            club = detect_club_from_frame(image, keypoints, frame_index, frame_count or frame_index + 1)
+            club = detect_club_for_frame(image, keypoints, frame_index, frame_count or frame_index + 1, args, club_debug)
             if club:
                 frame_payload["club"] = club
 
@@ -493,6 +677,7 @@ def mediapipe_solutions_result(args, cv2, mp):
             "droppedFrames": dropped_frames,
             "frameCount": frame_count or frame_index,
             "clubDetectedFrames": sum(1 for frame in frames if frame.get("club")),
+            "clubDetector": club_debug,
             "runtime": "mediapipe_solutions",
         },
         "durationSec": (frame_count or frame_index) / fps,
@@ -533,6 +718,7 @@ def mediapipe_tasks_result(args, cv2, mp):
 
     frames = []
     dropped_frames = 0
+    club_debug = club_detector_debug(args)
     frame_index = 0
 
     try:
@@ -572,7 +758,7 @@ def mediapipe_tasks_result(args, cv2, mp):
                     "time": round(frame_index / fps, 4),
                     "keypoints": keypoints,
                 }
-                club = detect_club_from_frame(image, keypoints, frame_index, frame_count or frame_index + 1)
+                club = detect_club_for_frame(image, keypoints, frame_index, frame_count or frame_index + 1, args, club_debug)
                 if club:
                     frame_payload["club"] = club
 
@@ -589,6 +775,7 @@ def mediapipe_tasks_result(args, cv2, mp):
             "droppedFrames": dropped_frames,
             "frameCount": frame_count or frame_index,
             "clubDetectedFrames": sum(1 for frame in frames if frame.get("club")),
+            "clubDetector": club_debug,
             "runtime": "mediapipe_tasks",
             "taskModelPath": str(model_path),
         },

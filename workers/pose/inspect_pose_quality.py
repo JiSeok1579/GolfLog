@@ -100,8 +100,80 @@ def point_distance(first, second):
     return math.hypot(first["x"] - second["x"], first["y"] - second["y"])
 
 
+def normalize_club_point(value, width, height):
+    if not isinstance(value, dict):
+        return None
+    x = normalize_axis(value.get("x"), width)
+    y = normalize_axis(value.get("y"), height)
+    return {"x": x, "y": y}
+
+
+def normalize_club(frame, width, height):
+    raw = frame.get("club")
+    if not isinstance(raw, dict):
+        return None
+    grip = normalize_club_point(raw.get("grip"), width, height)
+    head = normalize_club_point(raw.get("head"), width, height)
+    if not grip or not head:
+        return None
+    return {
+        "grip": grip,
+        "head": head,
+        "score": clamp(as_float(raw.get("score"), 1.0), 0.0, 1.0),
+        "source": str(raw.get("source") or "unknown"),
+    }
+
+
 def top_items(items, limit=5):
     return items[:limit]
+
+
+def inspect_club(normalized_frames, width, height, jump_threshold):
+    detected = []
+    missing = []
+    low_score = []
+    source_counts = {}
+    length_values = []
+
+    for frame, _ in normalized_frames:
+        number = frame_number(frame)
+        club = normalize_club(frame, width, height)
+        if not club:
+            missing.append(number)
+            continue
+        detected.append((number, club))
+        source_counts[club["source"]] = source_counts.get(club["source"], 0) + 1
+        length_values.append(point_distance(club["grip"], club["head"]))
+        if club["score"] < 0.55:
+            low_score.append({"frame": number, "score": round(club["score"], 3), "source": club["source"]})
+
+    jumps = []
+    previous = None
+    for number, club in detected:
+        if previous and previous[1]["score"] >= 0.55 and club["score"] >= 0.55:
+            distance = point_distance(previous[1]["head"], club["head"])
+            if distance >= jump_threshold:
+                jumps.append(
+                    {
+                        "fromFrame": previous[0],
+                        "toFrame": number,
+                        "distance": round(distance, 3),
+                        "source": club["source"],
+                    }
+                )
+        previous = (number, club)
+
+    scores = [club["score"] for _, club in detected]
+    return {
+        "detectedFrames": len(detected),
+        "missingFrames": missing,
+        "lowScoreFrames": low_score,
+        "avgScore": round(sum(scores) / len(scores), 3) if scores else 0.0,
+        "minScore": round(min(scores), 3) if scores else 0.0,
+        "avgLength": round(sum(length_values) / len(length_values), 3) if length_values else 0.0,
+        "sourceCounts": dict(sorted(source_counts.items())),
+        "largeJumps": top_items(sorted(jumps, key=lambda item: item["distance"], reverse=True), 12),
+    }
 
 
 def inspect(analysis, min_score, jump_threshold):
@@ -189,6 +261,7 @@ def inspect(analysis, min_score, jump_threshold):
             "jumpThreshold": jump_threshold,
         },
         "keypoints": keypoint_stats,
+        "club": inspect_club(normalized_frames, width, height, jump_threshold),
         "attention": {
             "lowestConfidence": top_items(low_score_counts),
             "largeJumps": top_items(sorted(jumps, key=lambda item: item["distance"], reverse=True), 12),
@@ -222,6 +295,32 @@ def render_markdown(report):
             f"| `{item['keypoint']}` | {item['lowScoreCount']} | {item['missingCount']} | "
             f"{item['avgScore']:.3f} | {item['minScore']:.3f} |"
         )
+
+    club = report["club"]
+    source_counts = ", ".join(f"{source}: {count}" for source, count in club["sourceCounts"].items()) or "none"
+    lines.extend(
+        [
+            "",
+            "## Club Detection",
+            "",
+            f"- detected frames: `{club['detectedFrames']}`",
+            f"- missing frames: `{len(club['missingFrames'])}`",
+            f"- low-score frames: `{len(club['lowScoreFrames'])}`",
+            f"- avg score: `{club['avgScore']:.3f}`",
+            f"- min score: `{club['minScore']:.3f}`",
+            f"- avg normalized length: `{club['avgLength']:.3f}`",
+            f"- source counts: `{source_counts}`",
+        ]
+    )
+    if club["lowScoreFrames"]:
+        low = ", ".join(f"{item['frame']}({item['score']:.3f}, {item['source']})" for item in club["lowScoreFrames"][:12])
+        lines.append(f"- low-score samples: {low}")
+    if club["largeJumps"]:
+        jump_list = ", ".join(
+            f"{item['fromFrame']}->{item['toFrame']}({item['distance']:.3f}, {item['source']})"
+            for item in club["largeJumps"][:8]
+        )
+        lines.append(f"- large head jumps: {jump_list}")
 
     lines.extend(["", "## Worst Frames", ""])
     for name, stat in report["keypoints"].items():

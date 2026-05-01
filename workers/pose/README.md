@@ -48,7 +48,7 @@ npm run inspect:pose
 npm run inspect:pose -- --require-real /path/to/swing.mp4 /tmp/golflog-pose-quality.md
 ```
 
-The report records fallback status, keypoint low-score/missing frames, and large coordinate jumps. Use it with the preview image to decide which frames need club or pose correction.
+The report records fallback status, keypoint low-score/missing frames, club detector source counts, club low-score frames, and large coordinate jumps. Use it with the preview image to decide which frames need club or pose correction.
 
 For MediaPipe Tasks, keep the model outside Git:
 
@@ -70,7 +70,28 @@ python3 workers/pose/analyze_pose.py \
 
 The worker runs MediaPipe in an isolated child process. If a native MediaPipe crash occurs, the parent process writes fallback pose frames instead of failing the whole API job. On the current Python 3.13 MediaPipe wheel, `mp.solutions` is not exposed; use `npm run setup:pose` so the worker runs through the Python 3.11 `.venv-pose` runtime. In restricted or non-GUI shells, macOS native graphics access can be blocked and MediaPipe may fall back even when the same command succeeds in the normal local environment.
 
-When MediaPipe returns body keypoints, the worker also runs a local OpenCV club-line detector around the wrist/grip area. Detected shaft candidates are written as frame-level `club.grip`, `club.head`, and `club.score`; when no stable line is found, the Node normalizer still falls back to the hand-based virtual club estimate.
+When MediaPipe returns body keypoints, the worker also runs a local club detector. Default `auto` mode tries an external detector command if configured, then falls back to the built-in OpenCV shaft-line detector around the wrist/grip area. Detected shaft candidates are written as frame-level `club.grip`, `club.head`, `club.score`, and `club.source`; when no stable line is found, the Node normalizer still falls back to the hand-based virtual club estimate.
+
+External club detector integration is local-only. Keep model weights outside Git and expose the model through a command:
+
+```bash
+GOLFLOG_CLUB_DETECTOR=auto \
+GOLFLOG_CLUB_DETECTOR_COMMAND="/path/to/detect_club_frame" \
+npm run check:pose -- --require-real /path/to/swing.mp4
+```
+
+The worker writes a sampled frame image path to `GOLFLOG_CLUB_FRAME_IMAGE` and body keypoints JSON to `GOLFLOG_CLUB_POSE_JSON`. The command must print JSON to stdout:
+
+```json
+{
+  "grip": { "x": 620.4, "y": 420.1 },
+  "head": { "x": 760.2, "y": 250.8 },
+  "score": 0.91,
+  "source": "golfpose-local"
+}
+```
+
+Coordinates are pixel-space in the source frame. The worker clamps them to the frame bounds and records detector counts under `debug.clubDetector`.
 
 Useful runtime controls:
 
@@ -79,6 +100,8 @@ GOLFLOG_POSE_RUNTIME=auto       # default: use mp.solutions when available; othe
 GOLFLOG_POSE_RUNTIME=tasks      # opt into MediaPipe Tasks with the local .task model
 GOLFLOG_POSE_RUNTIME=fallback   # skip MediaPipe and force deterministic fallback frames
 GOLFLOG_POSE_MAX_FRAMES=140     # cap sampled pose frames
+GOLFLOG_CLUB_DETECTOR=auto      # auto, opencv, external, or off
+GOLFLOG_CLUB_DETECTOR_COMMAND=  # optional local model command; never commit weights
 ```
 
 If `opencv-python` or `mediapipe` is unavailable, the worker writes fallback pose frames so the Node upload, job, normalization, and overlay pipeline can still be tested locally. The fallback is not a swing analysis model.

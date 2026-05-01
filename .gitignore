@@ -29,3 +29,27 @@ server-data/
 *.sqlite
 *.sqlite-shm
 *.sqlite-wal
+
+# Local-only AI models, datasets, and sample media
+models/
+data/raw/
+data/external/
+*.task
+*.tflite
+*.onnx
+*.pt
+*.pth
+*.ckpt
+*.h5
+*.pb
+*.mlmodel
+*.mp4
+*.mov
+*.m4v
+*.webm
+*.avi
+*.mkv
+*.parquet
+*.npy
+*.npz
+*.pkl

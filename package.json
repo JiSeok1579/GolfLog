@@ -4,6 +4,7 @@
   "version": "0.1.0",
   "type": "module",
   "scripts": {
+    "check:payload": "bash scripts/check-git-payload.sh",
     "dev": "vite --host 127.0.0.1",
     "dev:api": "node server/server.js",
     "build": "tsc --noEmit && vite build",

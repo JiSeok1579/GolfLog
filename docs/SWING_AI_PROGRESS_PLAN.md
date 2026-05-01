@@ -44,6 +44,7 @@
 - [x] 프레임 seek와 overlay 동기화
 - [x] 실제 영상 없이 확인 가능한 예시 분석 생성
 - [x] `.venv/bin/python` 자동 감지와 공개 샘플 영상 기반 worker/normalizer 검증
+- [x] 저작권/데이터 운영 정책과 Git payload 검사 추가
 
 ### Phase 1: 2D Golfer + Club Pose
 
@@ -65,6 +66,7 @@
 - GolfDB(`https://github.com/wmcnally/golfdb`)는 스윙 sequencing 검증 후보로 둔다.
 - GolfDB 코드/샘플은 CC BY-NC 4.0 기준이므로 개인·연구용 검증에만 사용한다.
 - 외부 영상·데이터셋 원본은 운영 데이터로만 보관하고 Git에는 올리지 않는다.
+- 모델 파일·가중치·샘플 영상·운영 데이터는 `NOTICE.md`, `docs/COPYRIGHT_AND_DATA_POLICY.md`, `npm run check:payload` 기준으로 관리한다.
 - 개인 실제 스윙이 생기기 전까지는 앱 내 예시 분석과 저장된 공개 샘플의 로컬 업로드로 UI/API 흐름을 검증한다.
 - 2026-05-01 기준 Python 3.13용 MediaPipe wheel은 `mp.solutions`가 노출되지 않아 기본 worker는 안전한 fallback pose로 UI/API를 검증한다.
 - MediaPipe Tasks 모델은 `/Volumes/X31/golflog-data/models/pose_landmarker_full.task`에 로컬 보관하며, 네이티브 런타임 안정화 후 명시적으로 켠다.

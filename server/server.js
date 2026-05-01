@@ -667,6 +667,10 @@ function findNearestPoseFrame(analysis, frame) {
   }, null);
 }
 
+function clampNumber(value, min, max) {
+  return Math.max(min, Math.min(max, value));
+}
+
 function maxAnalysisFrame(analysis) {
   const phaseMax = analysis.phases.reduce((best, phase) => Math.max(best, phase.endFrame), 0);
   const poseMax = analysis.pose2dFrames.reduce((best, poseFrame) => Math.max(best, poseFrame.frame), 0);
@@ -699,6 +703,41 @@ function normalizeAnalysisPhases(analysis, phases) {
   }
 
   return normalized;
+}
+
+function normalizeSwingPoint(value) {
+  if (!value || typeof value !== "object") return null;
+  const x = Number(value.x);
+  const y = Number(value.y);
+  if (!Number.isFinite(x) || !Number.isFinite(y)) return null;
+  if (x < 0 || x > 100 || y < 0 || y > 100) return null;
+  return {
+    x: Number(x.toFixed(2)),
+    y: Number(y.toFixed(2)),
+  };
+}
+
+function normalizeAnalysisClubCorrection(analysis, body) {
+  const requestedFrame = Math.round(Number(body?.frame));
+  if (!Number.isFinite(requestedFrame) || requestedFrame < 0) return null;
+
+  const targetFrame = findNearestPoseFrame(analysis, requestedFrame);
+  if (!targetFrame) return null;
+
+  const grip = normalizeSwingPoint(body?.club?.grip);
+  const head = normalizeSwingPoint(body?.club?.head);
+  if (!grip || !head) return null;
+
+  const rawScore = Number(body?.club?.score ?? 1);
+  const score = Number(clampNumber(Number.isFinite(rawScore) ? rawScore : 1, 0, 1).toFixed(2));
+  return {
+    club: {
+      grip,
+      head,
+      score,
+    },
+    frame: targetFrame.frame,
+  };
 }
 
 function updateAnalysisForUser(store, userId, analysisId, updater) {
@@ -1073,6 +1112,58 @@ async function handleApi(req, res) {
     const updated = updateAnalysisForUser(store, auth.user.id, analysisId, (current) => ({
       ...current,
       phases,
+      updatedAt: now,
+    }));
+    if (!updated) {
+      sendJson(res, 404, { error: "analysis_not_found" });
+      return;
+    }
+
+    const job = findAnalysisJob(store, auth.user.id, analysisId);
+    const nextStore = job ? upsertAnalysisJob(updated.store, auth.user.id, { ...job, updatedAt: now }) : updated.store;
+    if (job?.resultPath) {
+      try {
+        writeFileSync(job.resultPath, `${JSON.stringify(updated.analysis, null, 2)}\n`, "utf8");
+      } catch {
+        sendJson(res, 500, { error: "analysis_result_save_failed" });
+        return;
+      }
+    }
+
+    writeStore(nextStore);
+    sendJson(res, 200, { result: updated.analysis });
+    return;
+  }
+
+  const analysisClubMatch = url.pathname.match(/^\/api\/analysis\/([^/]+)\/club$/);
+  if (req.method === "PATCH" && analysisClubMatch) {
+    const analysisId = decodeURIComponent(analysisClubMatch[1]);
+    const analysis = findAnalysis(store, auth.user.id, analysisId);
+    if (!analysis) {
+      sendJson(res, 404, { error: "analysis_not_found" });
+      return;
+    }
+
+    let body;
+    try {
+      body = await readJson(req);
+    } catch {
+      sendJson(res, 400, { error: "invalid_json" });
+      return;
+    }
+
+    const correction = normalizeAnalysisClubCorrection(analysis, body);
+    if (!correction) {
+      sendJson(res, 400, { error: "invalid_analysis_club" });
+      return;
+    }
+
+    const now = new Date().toISOString();
+    const updated = updateAnalysisForUser(store, auth.user.id, analysisId, (current) => ({
+      ...current,
+      pose2dFrames: current.pose2dFrames.map((poseFrame) =>
+        poseFrame.frame === correction.frame ? { ...poseFrame, club: correction.club } : poseFrame,
+      ),
       updatedAt: now,
     }));
     if (!updated) {

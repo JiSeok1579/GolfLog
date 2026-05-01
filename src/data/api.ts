@@ -149,6 +149,18 @@ export async function updateSwingAnalysisPhases(analysisId: string, phases: Swin
   return parseJson<{ result: SwingAnalysisResult }>(response);
 }
 
+export async function updateSwingAnalysisClub(analysisId: string, input: { club: NonNullable<SwingPose2DFrame["club"]>; frame: number }) {
+  const response = await fetch(`/api/analysis/${encodeURIComponent(analysisId)}/club`, {
+    body: JSON.stringify(input),
+    credentials: "include",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    method: "PATCH",
+  });
+  return parseJson<{ result: SwingAnalysisResult }>(response);
+}
+
 export function swingAnalysisVideoUrl(analysisId: string) {
   return `/api/analysis/${encodeURIComponent(analysisId)}/video`;
 }

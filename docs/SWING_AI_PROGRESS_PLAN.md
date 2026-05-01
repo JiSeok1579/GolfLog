@@ -65,7 +65,8 @@
 - [x] MediaPipe 의존성 설치 후 실제 영상에서 keypoint 검증
 - [x] 실제 영상 keypoint 품질 확인용 overlay preview contact sheet 생성 도구 추가
 - [x] keypoint 저신뢰/누락/점프 QA 리포트 생성 도구 추가
-- [ ] 실제 클럽 head/grip 전용 검출 모델 또는 보정 UI 추가
+- [x] 프레임별 클럽 grip/head 수동 보정 UI와 저장 API 추가
+- [ ] 실제 클럽 head/grip 전용 검출 모델 추가
 
 예시 데이터 운영 원칙:
 
@@ -153,6 +154,6 @@
 
 ## 다음 실행 순서
 
-1. QA 리포트와 overlay preview 기준으로 실제 클럽 head/grip 보정 UI 범위 결정
-2. 실제 클럽 head/grip 전용 검출 모델 또는 수동 보정 UI 추가
+1. 수동 보정된 club grip/head를 phase/feature 계산에 재반영할지 범위 결정
+2. 실제 클럽 head/grip 전용 검출 모델 추가
 3. phase별 추천 문구와 보정된 구간 기준 리포트 정합성 점검

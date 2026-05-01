@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent, type KeyboardEvent } from "react";
-import { Activity, History, Play, RotateCcw, Save, SlidersHorizontal, Sparkles, Upload } from "lucide-react";
+import { Activity, Crosshair, History, Play, RotateCcw, Save, SlidersHorizontal, Sparkles, Upload } from "lucide-react";
 import { Button } from "../components/ui/Button";
 import { Card } from "../components/ui/Card";
 import { Chip } from "../components/ui/Chip";
@@ -9,6 +9,7 @@ import {
   fetchSwingAnalysis,
   fetchSwingAnalysisStatus,
   swingAnalysisVideoUrl,
+  updateSwingAnalysisClub,
   updateSwingAnalysisPhases,
   type SwingAnalysisListItem,
 } from "../data/api";
@@ -17,6 +18,12 @@ import { text, useLanguage } from "../data/i18n";
 import { newSwingAnalysisSchema, type Club, type SwingAnalysisResult, type SwingDominantHand, type SwingPhase, type SwingPose2DFrame, type SwingViewAngle } from "../data/schema";
 
 type SwingKeypointName = SwingPose2DFrame["keypoints"][number]["name"];
+type SwingPoint = NonNullable<SwingPose2DFrame["club"]>["grip"];
+type ClubDraft = {
+  frame: number;
+  grip: SwingPoint;
+  head: SwingPoint;
+};
 
 const viewAngleOptions: Array<{ value: SwingViewAngle; label: { ko: string; en: string } }> = [
   { value: "down-the-line", label: { ko: "후방", en: "Down the line" } },
@@ -126,6 +133,32 @@ function clampFrame(value: number, min: number, max: number) {
   return Math.max(min, Math.min(max, Math.round(value)));
 }
 
+function clampPercent(value: number) {
+  return Number(Math.max(0, Math.min(100, value)).toFixed(2));
+}
+
+function clubDraftFromFrame(frame: SwingPose2DFrame | null): ClubDraft | null {
+  if (!frame) return null;
+  const fallbackGrip = frame.keypoints.find((point) => point.name === "right_wrist") || frame.keypoints.find((point) => point.name === "left_wrist");
+  const fallbackHead = fallbackGrip ? { x: clampPercent(fallbackGrip.x + 18), y: clampPercent(fallbackGrip.y + 18) } : { x: 50, y: 50 };
+  return {
+    frame: frame.frame,
+    grip: {
+      x: clampPercent(frame.club?.grip.x ?? fallbackGrip?.x ?? 50),
+      y: clampPercent(frame.club?.grip.y ?? fallbackGrip?.y ?? 50),
+    },
+    head: {
+      x: clampPercent(frame.club?.head.x ?? fallbackHead.x),
+      y: clampPercent(frame.club?.head.y ?? fallbackHead.y),
+    },
+  };
+}
+
+function pointChanged(a: SwingPoint, b?: SwingPoint) {
+  if (!b) return true;
+  return Math.abs(a.x - b.x) > 0.01 || Math.abs(a.y - b.y) > 0.01;
+}
+
 function phaseFingerprint(phases: SwingPhase[]) {
   return phases.map((phase) => `${phase.name}:${phase.startFrame}:${phase.endFrame}`).join("|");
 }
@@ -154,6 +187,9 @@ export function SwingAiPage() {
   const [phaseDraft, setPhaseDraft] = useState<SwingPhase[] | null>(null);
   const [phaseSaving, setPhaseSaving] = useState(false);
   const [phaseError, setPhaseError] = useState("");
+  const [clubDraft, setClubDraft] = useState<ClubDraft | null>(null);
+  const [clubSaving, setClubSaving] = useState(false);
+  const [clubError, setClubError] = useState("");
   const [analysisHistory, setAnalysisHistory] = useState<SwingAnalysisListItem[]>([]);
   const [historyLoading, setHistoryLoading] = useState(false);
   const [status, setStatus] = useState<"idle" | "queued" | "running" | "done">("idle");
@@ -198,6 +234,9 @@ export function SwingAiPage() {
 
   const videoPreviewUrl = localVideoPreviewUrl || historyVideoUrl;
   const frame = nearestFrame(analysis, currentTime);
+  const clubDraftChanged = Boolean(
+    frame && clubDraft && clubDraft.frame === frame.frame && (pointChanged(clubDraft.grip, frame.club?.grip) || pointChanged(clubDraft.head, frame.club?.head)),
+  );
   const displayPhases = phaseDraft || analysis?.phases || [];
   const phaseDraftChanged = Boolean(analysis && phaseDraft && phaseFingerprint(analysis.phases) !== phaseFingerprint(phaseDraft));
   const activePhaseName = currentPhaseName(analysis, currentTime, phaseDraft || undefined);
@@ -214,6 +253,11 @@ export function SwingAiPage() {
         : [],
     [analysis],
   );
+
+  useEffect(() => {
+    setClubDraft(clubDraftFromFrame(frame));
+    setClubError("");
+  }, [analysis?.id, frame?.frame]);
 
   const seekToFrame = (targetFrame: number) => {
     if (!analysis) return;
@@ -258,6 +302,49 @@ export function SwingAiPage() {
 
       return withPhaseTimes(next, analysis.video.fps);
     });
+  };
+
+  const updateClubDraft = (point: "grip" | "head", axis: "x" | "y", rawValue: string) => {
+    const numericValue = Number(rawValue);
+    if (!Number.isFinite(numericValue)) return;
+    setClubDraft((current) => {
+      if (!current) return current;
+      return {
+        ...current,
+        [point]: {
+          ...current[point],
+          [axis]: clampPercent(numericValue),
+        },
+      };
+    });
+  };
+
+  const resetClubDraft = () => {
+    setClubDraft(clubDraftFromFrame(frame));
+    setClubError("");
+  };
+
+  const saveClubDraft = async () => {
+    if (!analysis || !frame || !clubDraft || !clubDraftChanged) return;
+    setClubSaving(true);
+    setClubError("");
+    try {
+      const response = await updateSwingAnalysisClub(analysis.id, {
+        club: {
+          grip: clubDraft.grip,
+          head: clubDraft.head,
+          score: 1,
+        },
+        frame: clubDraft.frame,
+      });
+      setAnalysis(response.result);
+      setClubDraft(clubDraftFromFrame(nearestFrame(response.result, currentTime)));
+      void refreshAnalysisHistory();
+    } catch {
+      setClubError(text(language, "클럽 보정을 저장하지 못했습니다.", "Could not save club edits."));
+    } finally {
+      setClubSaving(false);
+    }
   };
 
   const resetPhaseDraft = () => {
@@ -668,6 +755,91 @@ export function SwingAiPage() {
                 {phaseSaving ? text(language, "저장 중", "Saving") : text(language, "저장", "Save")}
               </Button>
             </div>
+          </Card>
+
+          <Card className="swing-club-editor-card">
+            <div className="card-title-row">
+              <div>
+                <p className="card-kicker">Club Edit</p>
+                <h2>{text(language, "클럽 보정", "Club Adjustment")}</h2>
+              </div>
+              <Crosshair size={18} />
+            </div>
+            {frame && clubDraft ? (
+              <>
+                <div className="swing-club-editor-grid">
+                  <button className="swing-club-editor-frame" onClick={() => seekToFrame(frame.frame)} type="button">
+                    <span>Frame</span>
+                    <strong>{frame.frame}f</strong>
+                  </button>
+                  <label>
+                    <span>Grip X</span>
+                    <input
+                      disabled={clubSaving}
+                      inputMode="decimal"
+                      max={100}
+                      min={0}
+                      onChange={(event) => updateClubDraft("grip", "x", event.target.value)}
+                      step={0.1}
+                      type="number"
+                      value={clubDraft.grip.x}
+                    />
+                  </label>
+                  <label>
+                    <span>Grip Y</span>
+                    <input
+                      disabled={clubSaving}
+                      inputMode="decimal"
+                      max={100}
+                      min={0}
+                      onChange={(event) => updateClubDraft("grip", "y", event.target.value)}
+                      step={0.1}
+                      type="number"
+                      value={clubDraft.grip.y}
+                    />
+                  </label>
+                  <label>
+                    <span>Head X</span>
+                    <input
+                      disabled={clubSaving}
+                      inputMode="decimal"
+                      max={100}
+                      min={0}
+                      onChange={(event) => updateClubDraft("head", "x", event.target.value)}
+                      step={0.1}
+                      type="number"
+                      value={clubDraft.head.x}
+                    />
+                  </label>
+                  <label>
+                    <span>Head Y</span>
+                    <input
+                      disabled={clubSaving}
+                      inputMode="decimal"
+                      max={100}
+                      min={0}
+                      onChange={(event) => updateClubDraft("head", "y", event.target.value)}
+                      step={0.1}
+                      type="number"
+                      value={clubDraft.head.y}
+                    />
+                  </label>
+                </div>
+                {clubError ? <div className="form-error">{clubError}</div> : null}
+                <div className="swing-club-editor-actions">
+                  <Button disabled={!clubDraftChanged || clubSaving} onClick={resetClubDraft} type="button" variant="ghost">
+                    <RotateCcw size={16} />
+                    {text(language, "초기화", "Reset")}
+                  </Button>
+                  <Button disabled={!clubDraftChanged || clubSaving} onClick={saveClubDraft} type="button">
+                    <Save size={16} />
+                    {clubSaving ? text(language, "저장 중", "Saving") : text(language, "저장", "Save")}
+                  </Button>
+                </div>
+              </>
+            ) : (
+              <div className="swing-history-empty">{text(language, "보정할 프레임 없음", "No frame to edit")}</div>
+            )}
           </Card>
 
           <Card className="swing-recommendation-card">

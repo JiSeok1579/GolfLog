@@ -1513,9 +1513,20 @@ main {
   margin-top: 14px;
 }
 
+.swing-club-editor-card {
+  margin-top: 14px;
+}
+
 .swing-phase-editor-list {
   display: grid;
   gap: 9px;
+}
+
+.swing-club-editor-grid {
+  align-items: end;
+  display: grid;
+  gap: 10px;
+  grid-template-columns: minmax(110px, 0.8fr) repeat(4, minmax(78px, 1fr));
 }
 
 .swing-phase-editor-row {
@@ -1523,6 +1534,21 @@ main {
   display: grid;
   gap: 10px;
   grid-template-columns: minmax(140px, 1fr) minmax(86px, 0.38fr) minmax(86px, 0.38fr);
+}
+
+.swing-club-editor-frame {
+  appearance: none;
+  background: var(--w-paper-2);
+  border: 1px solid var(--w-line);
+  border-radius: 7px;
+  color: inherit;
+  cursor: pointer;
+  display: grid;
+  font: inherit;
+  gap: 4px;
+  min-height: 46px;
+  padding: 9px 10px;
+  text-align: left;
 }
 
 .swing-phase-editor-seek {
@@ -1542,36 +1568,44 @@ main {
 
 .swing-phase-editor-seek:hover,
 .swing-phase-editor-seek:focus-visible,
-.swing-phase-editor-seek.is-active {
+.swing-phase-editor-seek.is-active,
+.swing-club-editor-frame:hover,
+.swing-club-editor-frame:focus-visible {
   border-color: var(--w-accent);
   outline: 2px solid rgba(191, 109, 74, 0.16);
   outline-offset: 2px;
 }
 
 .swing-phase-editor-seek span,
-.swing-phase-editor-row label span {
+.swing-phase-editor-row label span,
+.swing-club-editor-frame span,
+.swing-club-editor-grid label span {
   color: var(--w-muted);
   font-family: var(--font-mono);
   font-size: 11px;
   text-transform: uppercase;
 }
 
-.swing-phase-editor-seek small {
+.swing-phase-editor-seek small,
+.swing-club-editor-frame strong {
   color: var(--w-ink);
   font-family: var(--font-mono);
   font-size: 12px;
 }
 
-.swing-phase-editor-row label {
+.swing-phase-editor-row label,
+.swing-club-editor-grid label {
   display: grid;
   gap: 5px;
 }
 
-.swing-phase-editor-row input {
+.swing-phase-editor-row input,
+.swing-club-editor-grid input {
   min-height: 46px;
 }
 
-.swing-phase-editor-actions {
+.swing-phase-editor-actions,
+.swing-club-editor-actions {
   display: flex;
   gap: 8px;
   justify-content: flex-end;
@@ -1814,6 +1848,10 @@ main {
     grid-template-columns: minmax(0, 1fr) repeat(2, minmax(76px, 0.42fr));
   }
 
+  .swing-club-editor-grid {
+    grid-template-columns: minmax(120px, 1fr) repeat(2, minmax(76px, 0.5fr));
+  }
+
   .health-stat-grid,
   .swing-score-grid,
   .health-chart-grid,
@@ -1864,15 +1902,22 @@ main {
     grid-template-columns: 1fr 1fr;
   }
 
-  .swing-phase-editor-seek {
+  .swing-club-editor-grid {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .swing-phase-editor-seek,
+  .swing-club-editor-frame {
     grid-column: 1 / -1;
   }
 
-  .swing-phase-editor-actions {
+  .swing-phase-editor-actions,
+  .swing-club-editor-actions {
     justify-content: stretch;
   }
 
-  .swing-phase-editor-actions .button {
+  .swing-phase-editor-actions .button,
+  .swing-club-editor-actions .button {
     flex: 1;
   }
 

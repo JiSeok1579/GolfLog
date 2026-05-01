@@ -61,6 +61,7 @@
 - [x] video currentTime 기준으로 가까운 pose frame overlay 표시
 - [x] 손목, 어깨 폭, 클럽 종류, 주 사용 손, 스윙 진행률 기반 클럽 head/grip 휴리스틱 고도화
 - [x] MediaPipe 네이티브 크래시 격리 및 fallback pose job 지속 처리
+- [x] 전용 pose Python 환경 `.venv-pose` 우선 사용 및 `setup:pose`/`check:pose` 검증 스크립트 추가
 - [ ] MediaPipe 의존성 설치 후 실제 영상에서 keypoint 검증
 - [ ] 실제 클럽 head/grip 전용 검출 모델 또는 보정 UI 추가
 
@@ -74,6 +75,7 @@
 - 2026-05-01 기준 Python 3.13용 MediaPipe wheel은 `mp.solutions`가 노출되지 않아 기본 worker는 안전한 fallback pose로 UI/API를 검증한다.
 - 동일 환경에서 MediaPipe Tasks는 Metal graph 초기화 중 네이티브 fatal이 발생하므로, worker parent process가 이를 격리하고 fallback 결과를 저장한다.
 - MediaPipe Tasks 모델은 `/Volumes/X31/golflog-data/models/pose_landmarker_full.task`에 로컬 보관하며, 네이티브 런타임 안정화 후 명시적으로 켠다.
+- 실제 keypoint 검증은 `.venv-pose`에 Python 3.11 기반 MediaPipe runtime을 구성한 뒤 `npm run check:pose -- --require-real /path/to/swing.mp4`로 확인한다.
 
 완료 기준:
 

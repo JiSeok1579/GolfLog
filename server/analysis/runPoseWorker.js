@@ -3,6 +3,9 @@ import { existsSync } from "node:fs";
 import { resolve } from "node:path";
 
 function defaultPython(rootDir) {
+  const poseVenvPython = resolve(rootDir, ".venv-pose", "bin", "python");
+  if (existsSync(poseVenvPython)) return poseVenvPython;
+
   const venvPython = resolve(rootDir, ".venv", "bin", "python");
   return existsSync(venvPython) ? venvPython : "python3";
 }

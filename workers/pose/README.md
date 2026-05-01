@@ -18,11 +18,19 @@ python3 workers/pose/analyze_pose.py \
 Install optional baseline dependencies:
 
 ```bash
-python3 -m venv .venv
-.venv/bin/python -m pip install -r workers/pose/requirements.txt
+npm run setup:pose
 ```
 
-The Node API worker automatically prefers `.venv/bin/python` when it exists.
+The Node API worker automatically prefers `.venv-pose/bin/python` when it exists, then falls back to `.venv/bin/python`, then `python3`.
+
+Verify a local sample video:
+
+```bash
+npm run check:pose
+npm run check:pose -- --require-real /path/to/swing.mp4
+```
+
+The first command verifies that the worker produces usable analysis JSON. The `--require-real` form fails if the worker is still using fallback frames.
 
 For MediaPipe Tasks, keep the model outside Git:
 

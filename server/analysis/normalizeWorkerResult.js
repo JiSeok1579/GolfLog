@@ -45,34 +45,132 @@ function normalizeKeypoints(rawKeypoints, width, height) {
     });
 }
 
-function virtualClubFromHands(keypoints) {
-  const leftWrist = keypoints.find((point) => point.name === "left_wrist");
-  const rightWrist = keypoints.find((point) => point.name === "right_wrist");
+function pointByName(keypoints, name, minScore = 0.2) {
+  const point = keypoints.find((item) => item.name === name);
+  return point && point.score >= minScore ? point : null;
+}
+
+function vectorLength(vector) {
+  return Math.hypot(vector.x, vector.y);
+}
+
+function unitVector(vector, fallback = { x: 1, y: 0 }) {
+  const length = vectorLength(vector);
+  if (length < 0.001) return fallback;
+  return {
+    x: vector.x / length,
+    y: vector.y / length,
+  };
+}
+
+function blendVectors(primary, secondary, primaryWeight = 0.72) {
+  const secondaryWeight = 1 - primaryWeight;
+  return unitVector({
+    x: primary.x * primaryWeight + secondary.x * secondaryWeight,
+    y: primary.y * primaryWeight + secondary.y * secondaryWeight,
+  }, primary);
+}
+
+function clubLengthPercent(club, shoulderWidth, handSpread) {
+  const factors = {
+    "4I": 1.08,
+    "5I": 1.05,
+    "6I": 1.02,
+    "7I": 0.99,
+    "8I": 0.96,
+    "9I": 0.93,
+    AW: 0.87,
+    Driver: 1.28,
+    Hybrid: 1.14,
+    PW: 0.9,
+    SW: 0.84,
+    Wood: 1.2,
+  };
+  const factor = factors[club] || factors.Driver;
+  const maxLength = club === "Driver" ? 30 : club === "Wood" ? 29 : club === "Hybrid" ? 28 : 26;
+  return clamp(shoulderWidth * factor + handSpread * 0.35, 16, maxLength);
+}
+
+function swingDirection({ frameProgress, grip, handedSign, hipCenter, shoulderCenter }) {
+  const bodyHeight = Math.max(distance(shoulderCenter, hipCenter), 12);
+  const handHeightRatio = (grip.y - shoulderCenter.y) / bodyHeight;
+
+  if (frameProgress >= 0.86 && handHeightRatio < 0.45) {
+    return unitVector({ x: 0.78 * handedSign, y: -0.72 });
+  }
+
+  if (handHeightRatio <= 0.2 || (frameProgress < 0.58 && handHeightRatio < 0.65)) {
+    return unitVector({ x: -0.88 * handedSign, y: -0.48 });
+  }
+
+  if (frameProgress >= 0.58 && frameProgress < 0.82) {
+    const y = handHeightRatio > 0.72 ? 0.55 : -0.32;
+    return unitVector({ x: 0.9 * handedSign, y });
+  }
+
+  return unitVector({ x: 0.78 * handedSign, y: 0.62 });
+}
+
+function virtualClubFromHands(keypoints, input = {}, frameProgress = 0) {
+  const leftWrist = pointByName(keypoints, "left_wrist");
+  const rightWrist = pointByName(keypoints, "right_wrist");
   if (!leftWrist || !rightWrist) return undefined;
 
   const grip = {
     x: Number(((leftWrist.x + rightWrist.x) / 2).toFixed(2)),
     y: Number(((leftWrist.y + rightWrist.y) / 2).toFixed(2)),
   };
+  const leftShoulder = pointByName(keypoints, "left_shoulder");
+  const rightShoulder = pointByName(keypoints, "right_shoulder");
+  const leftHip = pointByName(keypoints, "left_hip");
+  const rightHip = pointByName(keypoints, "right_hip");
+  const shoulderCenter = averagePoints([leftShoulder, rightShoulder]) || pointByName(keypoints, "neck") || {
+    x: grip.x,
+    y: Math.max(grip.y - 25, 0),
+  };
+  const hipCenter = averagePoints([leftHip, rightHip]) || {
+    x: shoulderCenter.x,
+    y: Math.min(shoulderCenter.y + 24, 100),
+  };
+  const handedSign = input.dominantHand === "left" ? -1 : 1;
+  const shoulderWidth = Math.max(distance(leftShoulder, rightShoulder), 14);
+  const handSpread = distance(leftWrist, rightWrist);
+  const armDirection = unitVector(
+    {
+      x: grip.x - shoulderCenter.x,
+      y: grip.y - shoulderCenter.y,
+    },
+    { x: handedSign * 0.5, y: 0.86 },
+  );
+  const direction = blendVectors(
+    swingDirection({ frameProgress, grip, handedSign, hipCenter, shoulderCenter }),
+    armDirection,
+    input.viewAngle === "face-on" ? 0.78 : 0.72,
+  );
+  const length = clubLengthPercent(input.club, shoulderWidth, handSpread);
+
   return {
     grip,
     head: {
-      x: Number(clamp(grip.x + 16, 0, 100).toFixed(2)),
-      y: Number(clamp(grip.y + 14, 0, 100).toFixed(2)),
+      x: Number(clamp(grip.x + direction.x * length, 0, 100).toFixed(2)),
+      y: Number(clamp(grip.y + direction.y * length, 0, 100).toFixed(2)),
     },
-    score: Math.min(leftWrist.score, rightWrist.score, 0.52),
+    score: Math.min(leftWrist.score, rightWrist.score, 0.62),
   };
 }
 
-function normalizeFrames(raw, width, height) {
+function normalizeFrames(raw, width, height, input) {
   const frames = Array.isArray(raw.frames) ? raw.frames : [];
+  const maxFrame = frames.reduce((best, frame) => Math.max(best, Math.round(numberOr(frame.frame, 0))), 0);
   return frames
     .map((frame) => {
       const keypoints = normalizeKeypoints(frame.keypoints, width, height);
       if (keypoints.length === 0) return null;
+      const frameNumber = Math.max(0, Math.round(numberOr(frame.frame, 0)));
+      const frameProgress = maxFrame > 0 ? clamp(frameNumber / maxFrame, 0, 1) : 0;
       return {
-        club: frame.club || virtualClubFromHands(keypoints),
-        frame: Math.max(0, Math.round(numberOr(frame.frame, 0))),
+        club: frame.club || virtualClubFromHands(keypoints, input, frameProgress),
+        frame: frameNumber,
         keypoints,
         timeSec: Number(numberOr(frame.time, 0).toFixed(3)),
       };
@@ -322,7 +420,7 @@ export function normalizeWorkerResult({ analysisId, createdAt, input, raw, user 
   const fps = Math.max(numberOr(raw.fps, 30), 1);
   const width = Math.max(Math.round(numberOr(raw.width, 1280)), 1);
   const height = Math.max(Math.round(numberOr(raw.height, 720)), 1);
-  const pose2dFrames = normalizeFrames(raw, width, height);
+  const pose2dFrames = normalizeFrames(raw, width, height, input);
   const durationSec = Math.max(numberOr(raw.durationSec, 0), pose2dFrames.at(-1)?.timeSec || 1);
   const confidence = averageConfidence(pose2dFrames);
   const headSway = headSwayPercent(pose2dFrames);

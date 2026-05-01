@@ -8,6 +8,42 @@ function round(value, digits = 1) {
   return Math.round(value * factor) / factor;
 }
 
+function roundScore(value) {
+  return Math.round(clamp(Number.isFinite(value) ? value : 0, 0, 100));
+}
+
+function averageScores(values) {
+  const valid = values.filter((value) => Number.isFinite(value));
+  if (valid.length === 0) return 0;
+  return roundScore(valid.reduce((sum, value) => sum + value, 0) / valid.length);
+}
+
+function lowerIsBetterScore(value, warningAt, floor = 42) {
+  if (!Number.isFinite(value)) return floor;
+  return roundScore(100 - clamp(value / Math.max(warningAt, 0.001), 0, 1) * (100 - floor));
+}
+
+function targetScore(value, target, tolerance, floor = 48) {
+  if (!Number.isFinite(value)) return floor;
+  const distance = Math.abs(value - target);
+  return roundScore(100 - clamp(distance / Math.max(tolerance, 0.001), 0, 1) * (100 - floor));
+}
+
+function rangeScore(value, min, max, floor = 50) {
+  if (!Number.isFinite(value)) return floor;
+  if (value >= min && value <= max) return 92;
+  const distance = value < min ? min - value : value - max;
+  const tolerance = Math.max(max - min, 1);
+  return roundScore(92 - clamp(distance / tolerance, 0, 1) * (92 - floor));
+}
+
+function clubPathScore(clubPath) {
+  if (clubPath === "neutral") return 90;
+  if (clubPath === "in-to-out") return 82;
+  if (clubPath === "out-to-in") return 68;
+  return 76;
+}
+
 function point(frame, name, minScore = 0.35) {
   const match = frame?.keypoints?.find((item) => item.name === name);
   return match && match.score >= minScore ? match : null;
@@ -116,6 +152,47 @@ export function computeSwingProxyMetrics({ analysisQuality, frames, phases, temp
     shoulder_turn_proxy: round(shoulderTurn),
     tempo_ratio: round(tempoRatio, 2),
   };
+}
+
+export function computeCoachScores({ analysisQuality, features, scores }) {
+  if (analysisQuality?.isFallback) {
+    return {};
+  }
+
+  const proxyMetrics = features?.proxyMetrics || {};
+  const headSway = Number(proxyMetrics.head_sway_proxy ?? features?.headSwayCm ?? 0);
+  const shoulderTurn = Number(proxyMetrics.shoulder_turn_proxy ?? features?.shoulderTurnDeg ?? 0);
+  const hipTurn = Number(proxyMetrics.hip_turn_proxy ?? features?.hipTurnDeg ?? 0);
+  const spineAngle = Number(proxyMetrics.address_spine_angle_proxy ?? features?.spineAngleDeg ?? 0);
+  const leftArmBend = Number(proxyMetrics.left_arm_bend_at_top_proxy ?? 0);
+  const pelvisSway = Number(proxyMetrics.pelvis_sway_proxy ?? features?.pelvisSwayCm ?? 0);
+  const tempoRatio = Number(proxyMetrics.tempo_ratio ?? features?.tempoRatio ?? 0);
+  const confidence = Number(proxyMetrics.pose_confidence ?? analysisQuality?.poseConfidence ?? 0);
+  const confidenceScore = roundScore(confidence * 100);
+
+  const bodyMovementScores = {
+    armPath: lowerIsBetterScore(leftArmBend, 28, 46),
+    balance: roundScore(scores?.balance ?? 0),
+    headStability: lowerIsBetterScore(headSway, 12, 40),
+    hipRotation: rangeScore(hipTurn, 4, 58, 48),
+    shoulderRotation: rangeScore(shoulderTurn, 8, 88, 48),
+    spineAngleMaintenance: rangeScore(spineAngle, 4, 38, 50),
+    tempo: targetScore(tempoRatio, 3, 1.35, 48),
+    weightShift: targetScore(pelvisSway, 4.5, 7.5, 48),
+  };
+
+  const pathScore = clubPathScore(features?.clubPath);
+  const phaseScores = {
+    address: averageScores([scores?.setup, bodyMovementScores.spineAngleMaintenance, confidenceScore]),
+    backswingTop: averageScores([scores?.backswing, bodyMovementScores.shoulderRotation, bodyMovementScores.armPath, bodyMovementScores.headStability]),
+    downswing: averageScores([scores?.impact, bodyMovementScores.hipRotation, bodyMovementScores.tempo, pathScore]),
+    finish: averageScores([scores?.balance, bodyMovementScores.balance, bodyMovementScores.headStability]),
+    followThrough: averageScores([scores?.balance, bodyMovementScores.hipRotation, bodyMovementScores.weightShift]),
+    impact: averageScores([scores?.impact, bodyMovementScores.headStability, pathScore, confidenceScore]),
+    takeaway: averageScores([scores?.backswing, bodyMovementScores.armPath, bodyMovementScores.headStability]),
+  };
+
+  return { bodyMovementScores, phaseScores };
 }
 
 export function clubHeadPathProxy(frames, impactPhase, dominantHand) {

@@ -87,6 +87,38 @@ const swingScoreSchema = z.object({
   balance: z.number().min(0).max(100),
 });
 
+const swingPhaseScoreSchema = z.object({
+  address: z.number().min(0).max(100),
+  takeaway: z.number().min(0).max(100),
+  backswingTop: z.number().min(0).max(100),
+  downswing: z.number().min(0).max(100),
+  impact: z.number().min(0).max(100),
+  followThrough: z.number().min(0).max(100),
+  finish: z.number().min(0).max(100),
+});
+
+const swingBodyMovementScoreSchema = z.object({
+  headStability: z.number().min(0).max(100),
+  shoulderRotation: z.number().min(0).max(100),
+  hipRotation: z.number().min(0).max(100),
+  spineAngleMaintenance: z.number().min(0).max(100),
+  armPath: z.number().min(0).max(100),
+  weightShift: z.number().min(0).max(100),
+  balance: z.number().min(0).max(100),
+  tempo: z.number().min(0).max(100),
+});
+
+const swingHistoricalComparisonSchema = z.object({
+  club: clubSchema,
+  sampleSize: z.number().int().nonnegative(),
+  baselineType: z.enum(["same-club-recent", "same-club-best", "insufficient-data"]),
+  similarityScore: z.number().min(0).max(100).optional(),
+  summary: z.string(),
+  positiveMatches: z.array(z.string()),
+  negativeMatches: z.array(z.string()),
+  dataSufficiency: z.enum(["sufficient", "limited", "insufficient"]),
+});
+
 export const swingKeypoint2DSchema = swingPoint2DSchema.extend({
   name: swingKeypointNameSchema,
   score: z.number().min(0).max(1),
@@ -172,6 +204,9 @@ export const swingAnalysisResultSchema = z.object({
   }),
   analysisQuality: swingAnalysisQualitySchema.optional(),
   scores: swingScoreSchema,
+  phaseScores: swingPhaseScoreSchema.optional(),
+  bodyMovementScores: swingBodyMovementScoreSchema.optional(),
+  historicalComparison: swingHistoricalComparisonSchema.optional(),
   recommendations: z.array(swingRecommendationSchema),
   metricBaselines: z
     .object({
@@ -214,6 +249,9 @@ export type SwingPhase = z.infer<typeof swingPhaseSchema>;
 export type SwingAnalysisQuality = z.infer<typeof swingAnalysisQualitySchema>;
 export type SwingPose2DFrame = z.infer<typeof swingPose2DFrameSchema>;
 export type SwingRecommendation = z.infer<typeof swingRecommendationSchema>;
+export type SwingPhaseScores = z.infer<typeof swingPhaseScoreSchema>;
+export type SwingBodyMovementScores = z.infer<typeof swingBodyMovementScoreSchema>;
+export type SwingHistoricalComparison = z.infer<typeof swingHistoricalComparisonSchema>;
 export type SwingAnalysisResult = z.infer<typeof swingAnalysisResultSchema>;
 export type NewSwingAnalysisInput = z.infer<typeof newSwingAnalysisSchema>;
 export type AppData = z.infer<typeof appDataSchema>;

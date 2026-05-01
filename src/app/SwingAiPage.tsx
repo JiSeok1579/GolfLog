@@ -2,7 +2,10 @@ import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { Activity, Crosshair, History, Play, RotateCcw, Save, SlidersHorizontal, Sparkles, Upload } from "lucide-react";
 import { AnalysisQualityBadge, qualityForAnalysis } from "../components/swing-ai/AnalysisQualityBadge";
 import { CaptureGuideCard } from "../components/swing-ai/CaptureGuideCard";
+import { CoachSummaryCard } from "../components/swing-ai/CoachSummaryCard";
+import { HistoricalComparisonCard } from "../components/swing-ai/HistoricalComparisonCard";
 import { RecommendationCards } from "../components/swing-ai/RecommendationCards";
+import { ScoreBreakdownGrid } from "../components/swing-ai/ScoreBreakdownGrid";
 import { SkeletonOverlay } from "../components/swing-ai/SkeletonOverlay";
 import { Button } from "../components/ui/Button";
 import { Card } from "../components/ui/Card";
@@ -460,6 +463,8 @@ export function SwingAiPage() {
         <Chip tone="accent">{status === "running" || status === "queued" ? `${progress}%` : status === "done" ? "Result" : "Ready"}</Chip>
       </header>
 
+      {analysis ? <CoachSummaryCard analysis={analysis} language={language} /> : null}
+
       <div className="swing-ai-grid">
         <form className="form-stack" onSubmit={submit}>
           <Card>
@@ -620,6 +625,9 @@ export function SwingAiPage() {
           </div>
           {scoreUnavailable ? <p className="swing-score-note">Score unavailable for fallback analysis</p> : null}
 
+          <ScoreBreakdownGrid analysis={analysis} language={language} />
+          <HistoricalComparisonCard analysis={analysis} language={language} />
+
           <div className="swing-result-grid">
             <Card>
               <div className="card-title-row">
@@ -664,151 +672,158 @@ export function SwingAiPage() {
             </Card>
           </div>
 
-          <Card className="swing-phase-editor-card">
-            <div className="card-title-row">
-              <div>
-                <p className="card-kicker">Phase Edit</p>
-                <h2>{text(language, "구간 보정", "Phase Adjustment")}</h2>
-              </div>
-              <SlidersHorizontal size={18} />
-            </div>
-            <div className="swing-phase-editor-list">
-              {displayPhases.map((phase, index) => (
-                <div className="swing-phase-editor-row" key={phase.name}>
-                  <button
-                    className={`swing-phase-editor-seek${activePhaseName === phase.name ? " is-active" : ""}`}
-                    onClick={() => seekToFrame(phase.startFrame)}
-                    type="button"
-                  >
-                    <span>{phaseLabel(phase.name)}</span>
-                    <small>{phase.timeSec.toFixed(2)}s</small>
-                  </button>
-                  <label>
-                    <span>Start</span>
-                    <input
-                      disabled={index === 0 || phaseSaving}
-                      inputMode="numeric"
-                      max={phase.endFrame}
-                      min={index === 0 ? 0 : displayPhases[index - 1].startFrame + 1}
-                      onChange={(event) => updatePhaseBoundary(index, "startFrame", event.target.value)}
-                      type="number"
-                      value={phase.startFrame}
-                    />
-                  </label>
-                  <label>
-                    <span>End</span>
-                    <input
-                      disabled={index === displayPhases.length - 1 || phaseSaving}
-                      inputMode="numeric"
-                      max={index === displayPhases.length - 1 ? maxAnalysisFrame(analysis) : displayPhases[index + 1].endFrame - 1}
-                      min={phase.startFrame}
-                      onChange={(event) => updatePhaseBoundary(index, "endFrame", event.target.value)}
-                      type="number"
-                      value={phase.endFrame}
-                    />
-                  </label>
-                </div>
-              ))}
-            </div>
-            {phaseError ? <div className="form-error">{phaseError}</div> : null}
-            <div className="swing-phase-editor-actions">
-              <Button disabled={!phaseDraftChanged || phaseSaving} onClick={resetPhaseDraft} type="button" variant="ghost">
-                <RotateCcw size={16} />
-                {text(language, "초기화", "Reset")}
-              </Button>
-              <Button disabled={!phaseDraftChanged || phaseSaving} onClick={savePhaseDraft} type="button">
-                <Save size={16} />
-                {phaseSaving ? text(language, "저장 중", "Saving") : text(language, "저장", "Save")}
-              </Button>
-            </div>
-          </Card>
-
-          <Card className="swing-club-editor-card">
-            <div className="card-title-row">
-              <div>
-                <p className="card-kicker">Club Edit</p>
-                <h2>{text(language, "클럽 보정", "Club Adjustment")}</h2>
-              </div>
-              <Crosshair size={18} />
-            </div>
-            {frame && clubDraft ? (
-              <>
-                <div className="swing-club-editor-grid">
-                  <button className="swing-club-editor-frame" onClick={() => seekToFrame(frame.frame)} type="button">
-                    <span>Frame</span>
-                    <strong>{frame.frame}f</strong>
-                  </button>
-                  <label>
-                    <span>Grip X</span>
-                    <input
-                      disabled={clubSaving}
-                      inputMode="decimal"
-                      max={100}
-                      min={0}
-                      onChange={(event) => updateClubDraft("grip", "x", event.target.value)}
-                      step={0.1}
-                      type="number"
-                      value={clubDraft.grip.x}
-                    />
-                  </label>
-                  <label>
-                    <span>Grip Y</span>
-                    <input
-                      disabled={clubSaving}
-                      inputMode="decimal"
-                      max={100}
-                      min={0}
-                      onChange={(event) => updateClubDraft("grip", "y", event.target.value)}
-                      step={0.1}
-                      type="number"
-                      value={clubDraft.grip.y}
-                    />
-                  </label>
-                  <label>
-                    <span>Head X</span>
-                    <input
-                      disabled={clubSaving}
-                      inputMode="decimal"
-                      max={100}
-                      min={0}
-                      onChange={(event) => updateClubDraft("head", "x", event.target.value)}
-                      step={0.1}
-                      type="number"
-                      value={clubDraft.head.x}
-                    />
-                  </label>
-                  <label>
-                    <span>Head Y</span>
-                    <input
-                      disabled={clubSaving}
-                      inputMode="decimal"
-                      max={100}
-                      min={0}
-                      onChange={(event) => updateClubDraft("head", "y", event.target.value)}
-                      step={0.1}
-                      type="number"
-                      value={clubDraft.head.y}
-                    />
-                  </label>
-                </div>
-                {clubError ? <div className="form-error">{clubError}</div> : null}
-                <div className="swing-club-editor-actions">
-                  <Button disabled={!clubDraftChanged || clubSaving} onClick={resetClubDraft} type="button" variant="ghost">
-                    <RotateCcw size={16} />
-                    {text(language, "초기화", "Reset")}
-                  </Button>
-                  <Button disabled={!clubDraftChanged || clubSaving} onClick={saveClubDraft} type="button">
-                    <Save size={16} />
-                    {clubSaving ? text(language, "저장 중", "Saving") : text(language, "저장", "Save")}
-                  </Button>
-                </div>
-              </>
-            ) : (
-              <div className="swing-history-empty">{text(language, "보정할 프레임 없음", "No frame to edit")}</div>
-            )}
-          </Card>
-
           <RecommendationCards analysis={analysis} language={language} onViewPhase={seekToPhase} phaseLabel={phaseLabel} />
+
+          <section className="swing-advanced-tools">
+            <div className="swing-section-heading">
+              <p className="card-kicker">Advanced Correction</p>
+              <h2>{text(language, "고급 보정 도구", "Advanced Correction Tools")}</h2>
+            </div>
+
+            <Card className="swing-phase-editor-card">
+              <div className="card-title-row">
+                <div>
+                  <p className="card-kicker">Phase Edit</p>
+                  <h2>{text(language, "구간 보정", "Phase Adjustment")}</h2>
+                </div>
+                <SlidersHorizontal size={18} />
+              </div>
+              <div className="swing-phase-editor-list">
+                {displayPhases.map((phase, index) => (
+                  <div className="swing-phase-editor-row" key={phase.name}>
+                    <button
+                      className={`swing-phase-editor-seek${activePhaseName === phase.name ? " is-active" : ""}`}
+                      onClick={() => seekToFrame(phase.startFrame)}
+                      type="button"
+                    >
+                      <span>{phaseLabel(phase.name)}</span>
+                      <small>{phase.timeSec.toFixed(2)}s</small>
+                    </button>
+                    <label>
+                      <span>Start</span>
+                      <input
+                        disabled={index === 0 || phaseSaving}
+                        inputMode="numeric"
+                        max={phase.endFrame}
+                        min={index === 0 ? 0 : displayPhases[index - 1].startFrame + 1}
+                        onChange={(event) => updatePhaseBoundary(index, "startFrame", event.target.value)}
+                        type="number"
+                        value={phase.startFrame}
+                      />
+                    </label>
+                    <label>
+                      <span>End</span>
+                      <input
+                        disabled={index === displayPhases.length - 1 || phaseSaving}
+                        inputMode="numeric"
+                        max={index === displayPhases.length - 1 ? maxAnalysisFrame(analysis) : displayPhases[index + 1].endFrame - 1}
+                        min={phase.startFrame}
+                        onChange={(event) => updatePhaseBoundary(index, "endFrame", event.target.value)}
+                        type="number"
+                        value={phase.endFrame}
+                      />
+                    </label>
+                  </div>
+                ))}
+              </div>
+              {phaseError ? <div className="form-error">{phaseError}</div> : null}
+              <div className="swing-phase-editor-actions">
+                <Button disabled={!phaseDraftChanged || phaseSaving} onClick={resetPhaseDraft} type="button" variant="ghost">
+                  <RotateCcw size={16} />
+                  {text(language, "초기화", "Reset")}
+                </Button>
+                <Button disabled={!phaseDraftChanged || phaseSaving} onClick={savePhaseDraft} type="button">
+                  <Save size={16} />
+                  {phaseSaving ? text(language, "저장 중", "Saving") : text(language, "저장", "Save")}
+                </Button>
+              </div>
+            </Card>
+
+            <Card className="swing-club-editor-card">
+              <div className="card-title-row">
+                <div>
+                  <p className="card-kicker">Club Edit</p>
+                  <h2>{text(language, "클럽 보정", "Club Adjustment")}</h2>
+                </div>
+                <Crosshair size={18} />
+              </div>
+              {frame && clubDraft ? (
+                <>
+                  <div className="swing-club-editor-grid">
+                    <button className="swing-club-editor-frame" onClick={() => seekToFrame(frame.frame)} type="button">
+                      <span>Frame</span>
+                      <strong>{frame.frame}f</strong>
+                    </button>
+                    <label>
+                      <span>Grip X</span>
+                      <input
+                        disabled={clubSaving}
+                        inputMode="decimal"
+                        max={100}
+                        min={0}
+                        onChange={(event) => updateClubDraft("grip", "x", event.target.value)}
+                        step={0.1}
+                        type="number"
+                        value={clubDraft.grip.x}
+                      />
+                    </label>
+                    <label>
+                      <span>Grip Y</span>
+                      <input
+                        disabled={clubSaving}
+                        inputMode="decimal"
+                        max={100}
+                        min={0}
+                        onChange={(event) => updateClubDraft("grip", "y", event.target.value)}
+                        step={0.1}
+                        type="number"
+                        value={clubDraft.grip.y}
+                      />
+                    </label>
+                    <label>
+                      <span>Head X</span>
+                      <input
+                        disabled={clubSaving}
+                        inputMode="decimal"
+                        max={100}
+                        min={0}
+                        onChange={(event) => updateClubDraft("head", "x", event.target.value)}
+                        step={0.1}
+                        type="number"
+                        value={clubDraft.head.x}
+                      />
+                    </label>
+                    <label>
+                      <span>Head Y</span>
+                      <input
+                        disabled={clubSaving}
+                        inputMode="decimal"
+                        max={100}
+                        min={0}
+                        onChange={(event) => updateClubDraft("head", "y", event.target.value)}
+                        step={0.1}
+                        type="number"
+                        value={clubDraft.head.y}
+                      />
+                    </label>
+                  </div>
+                  {clubError ? <div className="form-error">{clubError}</div> : null}
+                  <div className="swing-club-editor-actions">
+                    <Button disabled={!clubDraftChanged || clubSaving} onClick={resetClubDraft} type="button" variant="ghost">
+                      <RotateCcw size={16} />
+                      {text(language, "초기화", "Reset")}
+                    </Button>
+                    <Button disabled={!clubDraftChanged || clubSaving} onClick={saveClubDraft} type="button">
+                      <Save size={16} />
+                      {clubSaving ? text(language, "저장 중", "Saving") : text(language, "저장", "Save")}
+                    </Button>
+                  </div>
+                </>
+              ) : (
+                <div className="swing-history-empty">{text(language, "보정할 프레임 없음", "No frame to edit")}</div>
+              )}
+            </Card>
+          </section>
         </>
       ) : null}
     </section>

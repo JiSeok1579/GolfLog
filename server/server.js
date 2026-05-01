@@ -1,6 +1,6 @@
 import { createHash, randomUUID } from "node:crypto";
-import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
-import { dirname, join, resolve } from "node:path";
+import { createReadStream, existsSync, mkdirSync, readFileSync, renameSync, statSync, writeFileSync } from "node:fs";
+import { dirname, extname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import http from "node:http";
 import { normalizeWorkerResult } from "./analysis/normalizeWorkerResult.js";
@@ -125,6 +125,52 @@ function sendJson(res, status, body, extraHeaders = {}) {
     ...extraHeaders,
   });
   res.end(JSON.stringify(body));
+}
+
+function videoContentType(filePath) {
+  const extension = extname(filePath).toLowerCase();
+  if (extension === ".mov") return "video/quicktime";
+  if (extension === ".webm") return "video/webm";
+  if (extension === ".m4v") return "video/x-m4v";
+  return "video/mp4";
+}
+
+function sendVideoFile(req, res, filePath) {
+  const stat = statSync(filePath);
+  const range = req.headers.range;
+  const commonHeaders = {
+    "Accept-Ranges": "bytes",
+    "Cache-Control": "no-store",
+    "Content-Type": videoContentType(filePath),
+  };
+
+  if (range) {
+    const match = /^bytes=(\d*)-(\d*)$/.exec(range);
+    const start = match && match[1] ? Number(match[1]) : 0;
+    const end = match && match[2] ? Number(match[2]) : stat.size - 1;
+    if (!Number.isInteger(start) || !Number.isInteger(end) || start < 0 || end < start || end >= stat.size) {
+      res.writeHead(416, {
+        "Content-Range": `bytes */${stat.size}`,
+        ...commonHeaders,
+      });
+      res.end();
+      return;
+    }
+
+    res.writeHead(206, {
+      "Content-Length": end - start + 1,
+      "Content-Range": `bytes ${start}-${end}/${stat.size}`,
+      ...commonHeaders,
+    });
+    createReadStream(filePath, { end, start }).pipe(res);
+    return;
+  }
+
+  res.writeHead(200, {
+    "Content-Length": stat.size,
+    ...commonHeaders,
+  });
+  createReadStream(filePath).pipe(res);
 }
 
 function readJson(req) {
@@ -578,6 +624,41 @@ function findAnalysisJob(store, userId, analysisId) {
   return analysisJobListForUser(store, userId).find((job) => job.analysisId === analysisId) || null;
 }
 
+function hasStoredVideo(job) {
+  return Boolean(job?.videoPath && existsSync(job.videoPath));
+}
+
+function analysisSummary(analysis, jobs) {
+  const job = jobs.find((item) => item.analysisId === analysis.id);
+  return {
+    createdAt: analysis.createdAt,
+    hasVideo: hasStoredVideo(job),
+    id: analysis.id,
+    input: analysis.input,
+    phaseCount: analysis.phases.length,
+    recommendationCount: analysis.recommendations.length,
+    scores: analysis.scores,
+    status: analysis.status,
+    updatedAt: job?.updatedAt || analysis.createdAt,
+    video: analysis.video,
+  };
+}
+
+function jobSummary(job) {
+  return {
+    createdAt: job.createdAt,
+    hasVideo: hasStoredVideo(job),
+    id: job.analysisId,
+    input: job.input,
+    phaseCount: 0,
+    recommendationCount: 0,
+    scores: null,
+    status: job.status,
+    updatedAt: job.updatedAt || job.createdAt,
+    video: null,
+  };
+}
+
 function findNearestPoseFrame(analysis, frame) {
   return analysis.pose2dFrames.reduce((best, current) => {
     if (!best) return current;
@@ -807,6 +888,23 @@ async function handleApi(req, res) {
     return;
   }
 
+  if (req.method === "GET" && url.pathname === "/api/analysis") {
+    const analyses = analysisListForUser(store, auth.user.id);
+    const jobs = analysisJobListForUser(store, auth.user.id);
+    const completedIds = new Set(analyses.map((analysis) => analysis.id));
+    const summaries = [
+      ...jobs.filter((job) => !completedIds.has(job.analysisId)).map(jobSummary),
+      ...analyses.map((analysis) => analysisSummary(analysis, jobs)),
+    ];
+
+    sendJson(res, 200, {
+      analyses: summaries
+        .sort((a, b) => String(b.updatedAt || b.createdAt).localeCompare(String(a.updatedAt || a.createdAt)))
+        .slice(0, 30),
+    });
+    return;
+  }
+
   if (req.method === "POST" && url.pathname === "/api/analysis") {
     if (isMultipartRequest(req)) {
       let multipart;
@@ -837,6 +935,7 @@ async function handleApi(req, res) {
       const now = new Date().toISOString();
       const job = {
         analysisId,
+        contentType: videoFile.contentType,
         createdAt: now,
         currentStage: "queued",
         error: null,
@@ -892,6 +991,20 @@ async function handleApi(req, res) {
       status: analysis.status,
       result: analysis,
     });
+    return;
+  }
+
+  const analysisVideoMatch = url.pathname.match(/^\/api\/analysis\/([^/]+)\/video$/);
+  if (req.method === "GET" && analysisVideoMatch) {
+    const analysisId = decodeURIComponent(analysisVideoMatch[1]);
+    const analysis = findAnalysis(store, auth.user.id, analysisId);
+    const job = findAnalysisJob(store, auth.user.id, analysisId);
+    if (!analysis || !hasStoredVideo(job)) {
+      sendJson(res, 404, { error: "analysis_video_not_found" });
+      return;
+    }
+
+    sendVideoFile(req, res, job.videoPath);
     return;
   }
 

@@ -1,8 +1,14 @@
 import { spawn } from "node:child_process";
+import { existsSync } from "node:fs";
 import { resolve } from "node:path";
 
+function defaultPython(rootDir) {
+  const venvPython = resolve(rootDir, ".venv", "bin", "python");
+  return existsSync(venvPython) ? venvPython : "python3";
+}
+
 export function runPoseWorker({ club, dominantHand, model = "mediapipe", outputPath, rootDir, timeoutMs = 180000, videoPath, viewAngle }) {
-  const python = process.env.GOLFLOG_POSE_PYTHON || "python3";
+  const python = process.env.GOLFLOG_POSE_PYTHON || defaultPython(rootDir);
   const scriptPath = resolve(rootDir, "workers", "pose", "analyze_pose.py");
   const args = [
     scriptPath,
@@ -23,6 +29,11 @@ export function runPoseWorker({ club, dominantHand, model = "mediapipe", outputP
   return new Promise((resolveWorker, reject) => {
     const child = spawn(python, args, {
       cwd: rootDir,
+      env: {
+        ...process.env,
+        MPLCONFIGDIR: process.env.MPLCONFIGDIR || "/tmp/mpl",
+        PYTHONDONTWRITEBYTECODE: process.env.PYTHONDONTWRITEBYTECODE || "1",
+      },
       stdio: ["ignore", "pipe", "pipe"],
     });
 

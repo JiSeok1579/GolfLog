@@ -31,6 +31,19 @@ export type CreateSwingAnalysisResponse = SwingAnalysisStatusResponse & {
   result?: SwingAnalysisResult;
 };
 
+export type SwingAnalysisListItem = {
+  createdAt: string;
+  hasVideo: boolean;
+  id: string;
+  input: SwingAnalysisResult["input"];
+  phaseCount: number;
+  recommendationCount: number;
+  scores: SwingAnalysisResult["scores"] | null;
+  status: SwingAnalysisStatus;
+  updatedAt: string;
+  video: SwingAnalysisResult["video"] | null;
+};
+
 async function parseJson<T>(response: Response): Promise<T> {
   const body = (await response.json()) as T;
   if (!response.ok) {
@@ -110,11 +123,22 @@ export async function createSwingAnalysis(input: NewSwingAnalysisInput & { video
   return parseJson<CreateSwingAnalysisResponse>(response);
 }
 
+export async function fetchSwingAnalyses() {
+  const response = await fetch("/api/analysis", {
+    credentials: "include",
+  });
+  return parseJson<{ analyses: SwingAnalysisListItem[] }>(response);
+}
+
 export async function fetchSwingAnalysis(analysisId: string) {
   const response = await fetch(`/api/analysis/${encodeURIComponent(analysisId)}`, {
     credentials: "include",
   });
   return parseJson<{ result: SwingAnalysisResult }>(response);
+}
+
+export function swingAnalysisVideoUrl(analysisId: string) {
+  return `/api/analysis/${encodeURIComponent(analysisId)}/video`;
 }
 
 export async function fetchSwingAnalysisStatus(analysisId: string) {

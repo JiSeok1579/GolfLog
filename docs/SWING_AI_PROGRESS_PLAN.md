@@ -40,8 +40,10 @@
 남은 보완:
 
 - [x] 실제 영상 바이너리 업로드 저장 구조 추가
-- [ ] 분석 기록 목록과 이전 결과 다시 열기
+- [x] 분석 기록 목록과 이전 결과 다시 열기
 - [x] 프레임 seek와 overlay 동기화
+- [x] 실제 영상 없이 확인 가능한 예시 분석 생성
+- [x] `.venv/bin/python` 자동 감지와 공개 샘플 영상 기반 worker/normalizer 검증
 
 ### Phase 1: 2D Golfer + Club Pose
 
@@ -57,6 +59,15 @@
 - [x] video currentTime 기준으로 가까운 pose frame overlay 표시
 - [ ] MediaPipe 의존성 설치 후 실제 영상에서 keypoint 검증
 - [ ] 클럽 head/grip 전용 검출 모델 또는 보정 UI 추가
+
+예시 데이터 운영 원칙:
+
+- GolfDB(`https://github.com/wmcnally/golfdb`)는 스윙 sequencing 검증 후보로 둔다.
+- GolfDB 코드/샘플은 CC BY-NC 4.0 기준이므로 개인·연구용 검증에만 사용한다.
+- 외부 영상·데이터셋 원본은 운영 데이터로만 보관하고 Git에는 올리지 않는다.
+- 개인 실제 스윙이 생기기 전까지는 앱 내 예시 분석과 저장된 공개 샘플의 로컬 업로드로 UI/API 흐름을 검증한다.
+- 2026-05-01 기준 Python 3.13용 MediaPipe wheel은 `mp.solutions`가 노출되지 않아 기본 worker는 안전한 fallback pose로 UI/API를 검증한다.
+- MediaPipe Tasks 모델은 `/Volumes/X31/golflog-data/models/pose_landmarker_full.task`에 로컬 보관하며, 네이티브 런타임 안정화 후 명시적으로 켠다.
 
 완료 기준:
 
@@ -128,7 +139,7 @@
 
 ## 다음 실행 순서
 
-1. `python3 -m pip install -r workers/pose/requirements.txt`로 MediaPipe baseline 의존성 설치
-2. 실제 스윙 영상으로 worker output 품질 확인
-3. 분석 기록 목록과 이전 결과 재열기 구현
-4. 클럽 head/grip 추정 고도화
+1. Python 3.11 legacy `mp.solutions` 또는 Python 3.13 MediaPipe Tasks 중 안정적인 pose runtime 확정
+2. GolfDB 등 공개 샘플 영상에서 실제 keypoint 품질 확인
+3. 클럽 head/grip 추정 고도화
+4. 수동 phase 보정 UI 추가

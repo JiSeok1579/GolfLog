@@ -3,6 +3,9 @@ import argparse
 import json
 import math
 import os
+import subprocess
+import sys
+import tempfile
 from pathlib import Path
 
 
@@ -30,11 +33,13 @@ def parse_args():
     parser.add_argument("--video", required=True)
     parser.add_argument("--out", required=True)
     parser.add_argument("--model", default="mediapipe")
+    parser.add_argument("--runtime", choices=["auto", "solutions", "tasks", "fallback"], default=os.environ.get("GOLFLOG_POSE_RUNTIME", "auto"))
     parser.add_argument("--view-angle", default="down-the-line")
     parser.add_argument("--club-type", default="Driver")
     parser.add_argument("--dominant-hand", default="right")
     parser.add_argument("--landmarker-model", default=None)
     parser.add_argument("--max-frames", type=int, default=140)
+    parser.add_argument("--mediapipe-child", action="store_true", help=argparse.SUPPRESS)
     return parser.parse_args()
 
 
@@ -109,6 +114,7 @@ def fallback_result(args, reason):
             "droppedFrames": 0,
             "fallbackReason": reason,
             "frameCount": total_frames,
+            "runtime": "fallback",
         },
         "durationSec": total_frames / fps,
         "fps": fps,
@@ -151,6 +157,17 @@ def mediapipe_result(args):
     import cv2
     import mediapipe as mp
 
+    if args.runtime == "fallback":
+        raise RuntimeError("fallback_runtime_requested")
+
+    if args.runtime == "solutions":
+        if not hasattr(mp, "solutions"):
+            raise RuntimeError("mediapipe_solutions_unavailable")
+        return mediapipe_solutions_result(args, cv2, mp)
+
+    if args.runtime == "tasks":
+        return mediapipe_tasks_result(args, cv2, mp)
+
     if hasattr(mp, "solutions"):
         return mediapipe_solutions_result(args, cv2, mp)
 
@@ -158,6 +175,73 @@ def mediapipe_result(args):
         raise RuntimeError("mediapipe_solutions_unavailable")
 
     return mediapipe_tasks_result(args, cv2, mp)
+
+
+def child_args(args, output_path):
+    command = [
+        sys.executable,
+        str(Path(__file__).resolve()),
+        "--video",
+        args.video,
+        "--out",
+        output_path,
+        "--model",
+        args.model,
+        "--runtime",
+        args.runtime,
+        "--view-angle",
+        args.view_angle,
+        "--club-type",
+        args.club_type,
+        "--dominant-hand",
+        args.dominant_hand,
+        "--max-frames",
+        str(args.max_frames),
+        "--mediapipe-child",
+    ]
+    if args.landmarker_model:
+        command.extend(["--landmarker-model", args.landmarker_model])
+    return command
+
+
+def isolated_mediapipe_result(args):
+    if args.runtime == "fallback":
+        return fallback_result(args, "fallback_runtime_requested")
+
+    temp_path = None
+    try:
+        with tempfile.NamedTemporaryFile(prefix="golflog-pose-worker-", suffix=".json", delete=False) as temp_file:
+            temp_path = temp_file.name
+
+        completed = subprocess.run(
+            child_args(args, temp_path),
+            cwd=str(Path(__file__).resolve().parents[2]),
+            env={
+                **os.environ,
+                "MPLCONFIGDIR": os.environ.get("MPLCONFIGDIR", "/tmp/mpl"),
+                "PYTHONDONTWRITEBYTECODE": os.environ.get("PYTHONDONTWRITEBYTECODE", "1"),
+            },
+            stderr=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            text=True,
+            timeout=max(30, int(os.environ.get("GOLFLOG_POSE_WORKER_TIMEOUT_SEC", "150"))),
+        )
+        if completed.returncode != 0:
+            stderr = (completed.stderr or completed.stdout or "").strip().splitlines()
+            reason = stderr[-1] if stderr else f"exit_code_{completed.returncode}"
+            return fallback_result(args, f"mediapipe_isolated_failed:{completed.returncode}:{reason}")
+
+        return json.loads(Path(temp_path).read_text(encoding="utf-8"))
+    except subprocess.TimeoutExpired:
+        return fallback_result(args, "mediapipe_isolated_timeout")
+    except Exception as exc:
+        return fallback_result(args, f"mediapipe_isolated_error:{type(exc).__name__}:{exc}")
+    finally:
+        if temp_path:
+            try:
+                Path(temp_path).unlink()
+            except OSError:
+                pass
 
 
 def mediapipe_solutions_result(args, cv2, mp):
@@ -231,6 +315,7 @@ def mediapipe_solutions_result(args, cv2, mp):
         "debug": {
             "droppedFrames": dropped_frames,
             "frameCount": frame_count or frame_index,
+            "runtime": "mediapipe_solutions",
         },
         "durationSec": (frame_count or frame_index) / fps,
         "fps": fps,
@@ -257,7 +342,7 @@ def mediapipe_tasks_result(args, cv2, mp):
     width = int(capture.get(cv2.CAP_PROP_FRAME_WIDTH) or 1280)
     height = int(capture.get(cv2.CAP_PROP_FRAME_HEIGHT) or 720)
     frame_count = int(capture.get(cv2.CAP_PROP_FRAME_COUNT) or 0)
-    step = max(1, frame_count // max(args.max_frames, 1)) if frame_count > 0 else 1
+    step = max(1, math.ceil(frame_count / max(args.max_frames, 1))) if frame_count > 0 else 1
     options = vision.PoseLandmarkerOptions(
         base_options=BaseOptions(model_asset_path=str(model_path), delegate=BaseOptions.Delegate.CPU),
         running_mode=vision.RunningMode.VIDEO,
@@ -323,6 +408,7 @@ def mediapipe_tasks_result(args, cv2, mp):
             "droppedFrames": dropped_frames,
             "frameCount": frame_count or frame_index,
             "runtime": "mediapipe_tasks",
+            "taskModelPath": str(model_path),
         },
         "durationSec": (frame_count or frame_index) / fps,
         "fps": fps,
@@ -335,10 +421,12 @@ def mediapipe_tasks_result(args, cv2, mp):
 
 def main():
     args = parse_args()
-    try:
+    if args.mediapipe_child:
         result = mediapipe_result(args)
-    except Exception as exc:
-        result = fallback_result(args, type(exc).__name__ + ":" + str(exc))
+    elif args.model == "mediapipe":
+        result = isolated_mediapipe_result(args)
+    else:
+        result = fallback_result(args, f"unsupported_model:{args.model}")
 
     out_path = Path(args.out)
     out_path.parent.mkdir(parents=True, exist_ok=True)

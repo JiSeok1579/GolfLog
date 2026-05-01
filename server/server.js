@@ -527,9 +527,22 @@ function createMockAnalysis(user, input) {
   const id = createId("analysis");
   const headSway = input.viewAngle === "face-on" ? 6.2 : 4.8;
   const xFactor = input.club === "Driver" ? 31 : 27;
-  const overall = Math.max(72, Math.min(91, 88 - Math.round(headSway) + Math.round(xFactor / 10)));
+  const pose2dFrames = mockPoseFrames(input.dominantHand);
+  const analysisQuality = {
+    analyzedFrameCount: pose2dFrames.length,
+    clubDetectedFrames: pose2dFrames.length,
+    clubDetectionRate: 1,
+    droppedFrames: 0,
+    frameCount: 193,
+    isFallback: true,
+    model: "mock-sample",
+    poseConfidence: 0.91,
+    runtime: "fallback",
+    warning: "Sample analysis uses generated pose data and should not be treated as a real swing analysis.",
+  };
 
   return {
+    analysisQuality,
     id,
     createdAt: new Date().toISOString(),
     status: "completed",
@@ -554,7 +567,7 @@ function createMockAnalysis(user, input) {
       { name: "follow_through", startFrame: 124, endFrame: 158, timeSec: 2.07 },
       { name: "finish", startFrame: 159, endFrame: 192, timeSec: 2.65 },
     ],
-    pose2dFrames: mockPoseFrames(input.dominantHand),
+    pose2dFrames,
     features: {
       tempoRatio: 3.1,
       shoulderTurnDeg: input.club === "Driver" ? 91 : 84,
@@ -564,13 +577,24 @@ function createMockAnalysis(user, input) {
       pelvisSwayCm: 3.4,
       spineAngleDeg: 34,
       clubPath: input.club === "Driver" ? "in-to-out" : "neutral",
+      proxyMetrics: {
+        address_spine_angle_proxy: 34,
+        club_detection_rate: 1,
+        head_sway_proxy: headSway,
+        hip_turn_proxy: input.club === "Driver" ? 45 : 39,
+        left_arm_bend_at_top_proxy: 8,
+        pelvis_sway_proxy: 3.4,
+        pose_confidence: 0.91,
+        shoulder_turn_proxy: input.club === "Driver" ? 91 : 84,
+        tempo_ratio: 3.1,
+      },
     },
     scores: {
-      overall,
-      setup: 86,
-      backswing: 82,
-      impact: 78,
-      balance: 84,
+      overall: 0,
+      setup: 0,
+      backswing: 0,
+      impact: 0,
+      balance: 0,
     },
     recommendations: [
       {
@@ -578,10 +602,16 @@ function createMockAnalysis(user, input) {
         phase: "backswing_top",
         severity: headSway > 6 ? "warning" : "info",
         title: "백스윙 상단에서 머리 이동을 줄이세요",
-        detail: `${user.name}님의 현재 샘플 기준 머리 이동은 ${headSway.toFixed(1)}cm입니다. 중심축이 흔들리면 임팩트 재현성이 낮아질 수 있습니다.`,
+        detail: `${user.name}님의 현재 샘플 기준 머리 이동은 화면 폭 기준 ${headSway.toFixed(1)}%입니다. 중심축이 흔들리면 임팩트 재현성이 낮아질 수 있습니다.`,
         drill: "어드레스 때 만든 척추 각도를 유지한 채 오른발 안쪽 압력을 느끼며 하프스윙 10회를 반복하세요.",
+        evidenceMetrics: {
+          head_sway_proxy: `${headSway.toFixed(1)}% frame width`,
+        },
         metric: "head_sway",
-        value: `${headSway.toFixed(1)}cm`,
+        overlayFrameRange: [49, 78],
+        reason: "백스윙 상단에서 중심축이 흔들리면 다운스윙에서 같은 임팩트 위치로 돌아오기 어려워질 수 있습니다.",
+        suggestion: "어드레스 때 만든 척추 각도와 오른발 안쪽 압력을 유지하면서 회전 폭을 줄여 확인하세요.",
+        value: `${headSway.toFixed(1)}%`,
       },
       {
         id: "rec-x-factor",
@@ -590,7 +620,13 @@ function createMockAnalysis(user, input) {
         title: "전환 구간의 상하체 분리 타이밍을 유지하세요",
         detail: `어깨-골반 분리각은 ${xFactor}도로 양호한 편입니다. 다운스윙 시작 때 손보다 골반 회전이 먼저 열리는 흐름을 유지하는 것이 좋습니다.`,
         drill: "탑에서 1초 멈춘 뒤 왼쪽 골반을 먼저 여는 펌프 드릴을 5회씩 진행하세요.",
+        evidenceMetrics: {
+          x_factor_proxy: `${xFactor}deg`,
+        },
         metric: "x_factor",
+        overlayFrameRange: [79, 112],
+        reason: "전환 구간에서 상체와 하체 순서가 안정되면 손으로만 클럽을 던지는 동작을 줄일 수 있습니다.",
+        suggestion: "탑에서 손을 먼저 내리기보다 골반이 먼저 목표 방향으로 열리는 순서를 유지하세요.",
         value: `${xFactor}deg`,
       },
       {
@@ -600,7 +636,13 @@ function createMockAnalysis(user, input) {
         title: "임팩트 구간 손-클럽 관계를 고정하세요",
         detail: "클럽 패스는 목표선 안쪽에서 접근하는 형태로 추정됩니다. 과도하게 손목을 풀면 페이스 관리가 어려워집니다.",
         drill: "임팩트 백 드릴로 손이 공보다 약간 앞선 위치를 유지한 채 짧은 피치샷을 반복하세요.",
+        evidenceMetrics: {
+          club_path: input.club === "Driver" ? "in-to-out" : "neutral",
+        },
         metric: "club_path",
+        overlayFrameRange: [113, 123],
+        reason: "임팩트 전후 손과 클럽 헤드 관계가 흔들리면 같은 경로와 페이스를 반복하기 어렵습니다.",
+        suggestion: "짧은 피치샷 속도에서 손이 공보다 약간 앞선 임팩트 모양을 먼저 반복하세요.",
         value: input.club === "Driver" ? "in-to-out" : "neutral",
       },
     ],
@@ -632,6 +674,7 @@ function hasStoredVideo(job) {
 function analysisSummary(analysis, jobs) {
   const job = jobs.find((item) => item.analysisId === analysis.id);
   return {
+    analysisQuality: analysis.analysisQuality || null,
     createdAt: analysis.createdAt,
     hasVideo: hasStoredVideo(job),
     id: analysis.id,
@@ -846,6 +889,7 @@ function recomputeScoresForClubPath(scores, clubPath) {
 
 function clubPathRecommendation(user, analysis, clubPath) {
   const phase = analysis.phases.some((item) => item.name === "impact") ? "impact" : "downswing";
+  const targetPhase = analysis.phases.find((item) => item.name === phase);
   const guidance = {
     "in-to-out": {
       detail: `${user.name}님의 현재 클럽 head 기준 화면상 클럽 경로는 in-to-out에 가깝습니다. 과도해지면 출발 방향과 페이스 관리가 흔들릴 수 있으니 임팩트 직전 손목 릴리즈를 일정하게 유지하세요.`,
@@ -870,10 +914,16 @@ function clubPathRecommendation(user, analysis, clubPath) {
   return {
     detail: item.detail,
     drill: item.drill,
+    evidenceMetrics: {
+      club_path: clubPath,
+    },
     id: "rec-club-path-correction",
     metric: "club_path",
+    overlayFrameRange: targetPhase ? [targetPhase.startFrame, targetPhase.endFrame] : undefined,
     phase,
+    reason: "임팩트 전후 클럽 head의 화면상 이동 경로가 일정하지 않으면 출발 방향과 페이스 관리가 흔들릴 수 있습니다.",
     severity: item.severity,
+    suggestion: "2D 단일 카메라 추정값이므로 실제 구질과 함께 확인하고, 같은 촬영 각도에서 반복성을 먼저 보세요.",
     title: item.title,
     value: clubPath,
   };
@@ -912,7 +962,15 @@ function refreshAnalysisReportMetrics(analysis, user) {
       phaseAdjusted.recommendations,
       clubPathRecommendation(user, { ...phaseAdjusted, features }, clubPath),
     ),
-    scores: recomputeScoresForClubPath(scoreBaseline(phaseAdjusted), clubPath),
+    scores: phaseAdjusted.analysisQuality?.isFallback
+      ? {
+          backswing: 0,
+          balance: 0,
+          impact: 0,
+          overall: 0,
+          setup: 0,
+        }
+      : recomputeScoresForClubPath(scoreBaseline(phaseAdjusted), clubPath),
   };
 }
 

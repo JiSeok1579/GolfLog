@@ -112,6 +112,19 @@ export const swingPhaseSchema = z.object({
   timeSec: z.number().nonnegative(),
 });
 
+export const swingAnalysisQualitySchema = z.object({
+  runtime: z.enum(["mediapipe_solutions", "mediapipe_tasks", "fallback", "unknown"]),
+  model: z.string(),
+  isFallback: z.boolean(),
+  poseConfidence: z.number().min(0).max(1),
+  frameCount: z.number().int().nonnegative(),
+  analyzedFrameCount: z.number().int().nonnegative(),
+  droppedFrames: z.number().int().nonnegative(),
+  clubDetectedFrames: z.number().int().nonnegative(),
+  clubDetectionRate: z.number().min(0).max(1),
+  warning: z.string().optional(),
+});
+
 export const swingRecommendationSchema = z.object({
   id: z.string(),
   phase: swingPhaseNameSchema,
@@ -121,6 +134,11 @@ export const swingRecommendationSchema = z.object({
   drill: z.string(),
   metric: z.string(),
   value: z.string(),
+  evidenceMetrics: z.record(z.string(), z.union([z.number(), z.string()])).optional(),
+  overlayFrameRange: z.tuple([z.number().int().nonnegative(), z.number().int().nonnegative()]).optional(),
+  reason: z.string().optional(),
+  safetyNote: z.string().optional(),
+  suggestion: z.string().optional(),
 });
 
 export const swingAnalysisResultSchema = z.object({
@@ -150,7 +168,9 @@ export const swingAnalysisResultSchema = z.object({
     pelvisSwayCm: z.number(),
     spineAngleDeg: z.number(),
     clubPath: z.enum(["in-to-out", "neutral", "out-to-in"]),
+    proxyMetrics: z.record(z.string(), z.union([z.number(), z.string()])).optional(),
   }),
+  analysisQuality: swingAnalysisQualitySchema.optional(),
   scores: swingScoreSchema,
   recommendations: z.array(swingRecommendationSchema),
   metricBaselines: z
@@ -191,6 +211,7 @@ export type SwingDominantHand = z.infer<typeof swingDominantHandSchema>;
 export type SwingAnalysisStatus = z.infer<typeof swingAnalysisStatusSchema>;
 export type SwingPhaseName = z.infer<typeof swingPhaseNameSchema>;
 export type SwingPhase = z.infer<typeof swingPhaseSchema>;
+export type SwingAnalysisQuality = z.infer<typeof swingAnalysisQualitySchema>;
 export type SwingPose2DFrame = z.infer<typeof swingPose2DFrameSchema>;
 export type SwingRecommendation = z.infer<typeof swingRecommendationSchema>;
 export type SwingAnalysisResult = z.infer<typeof swingAnalysisResultSchema>;

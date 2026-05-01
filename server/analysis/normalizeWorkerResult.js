@@ -1,3 +1,5 @@
+import { averagePoseConfidence, clubHeadPathProxy, computeSwingProxyMetrics } from "./metrics.js";
+
 const allowedKeypoints = new Set([
   "head",
   "neck",
@@ -399,45 +401,113 @@ function tempoRatioFromPhases(phases) {
   return Number(clamp(backswingFrames / downswingFrames, 0.5, 5).toFixed(1));
 }
 
-function headSwayPercent(frames) {
-  const headXs = frames
-    .map((frame) => frame.keypoints.find((point) => point.name === "head"))
-    .filter((point) => point && point.score >= 0.4)
-    .map((point) => point.x);
-  if (headXs.length < 2) return 0;
-  return Math.max(...headXs) - Math.min(...headXs);
+function normalizeRuntime(value) {
+  const runtime = String(value || "").trim();
+  if (runtime === "mediapipe_solutions" || runtime === "mediapipe_tasks" || runtime === "fallback") {
+    return runtime;
+  }
+  if (runtime === "solutions") return "mediapipe_solutions";
+  if (runtime === "tasks") return "mediapipe_tasks";
+  return "unknown";
 }
 
-function averageConfidence(frames) {
-  const scores = frames.flatMap((frame) => frame.keypoints.map((point) => point.score));
-  if (scores.length === 0) return 0;
-  return scores.reduce((sum, value) => sum + value, 0) / scores.length;
+function countRawClubFrames(raw) {
+  const frames = Array.isArray(raw.frames) ? raw.frames : [];
+  return frames.reduce((sum, frame) => (frame?.club ? sum + 1 : sum), 0);
 }
 
-function createRecommendations(user, frames, features) {
-  const confidence = averageConfidence(frames);
+function normalizeAnalysisQuality(raw, frames, poseConfidence) {
+  const debug = raw.debug && typeof raw.debug === "object" ? raw.debug : {};
+  const runtime = normalizeRuntime(debug.runtime);
+  const model = String(raw.model || debug.model || runtime || "unknown");
+  const analyzedFrameCount = frames.length;
+  const rawFrameCount = Math.round(numberOr(debug.frameCount, analyzedFrameCount));
+  const frameCount = Math.max(rawFrameCount, analyzedFrameCount, 0);
+  const droppedFrames = Math.max(0, Math.round(numberOr(debug.droppedFrames, 0)));
+  const clubDetectedFrames = Math.max(0, Math.round(numberOr(debug.clubDetectedFrames, countRawClubFrames(raw))));
+  const clubDetectionRate = analyzedFrameCount > 0 ? clubDetectedFrames / analyzedFrameCount : 0;
+  const isFallback = runtime === "fallback" || model.toLowerCase().includes("fallback") || Boolean(debug.fallbackReason);
+  return {
+    analyzedFrameCount,
+    clubDetectedFrames,
+    clubDetectionRate: Number(clamp(clubDetectionRate, 0, 1).toFixed(3)),
+    droppedFrames,
+    frameCount,
+    isFallback,
+    model,
+    poseConfidence: Number(clamp(poseConfidence, 0, 1).toFixed(3)),
+    runtime,
+    ...(isFallback
+      ? {
+          warning:
+            "Pose model failed; this result uses fallback synthetic pose data and should not be treated as a real swing analysis.",
+        }
+      : {}),
+  };
+}
+
+function phaseFrameRange(phases, phaseName) {
+  const phase = phases.find((item) => item.name === phaseName);
+  return phase ? [phase.startFrame, phase.endFrame] : undefined;
+}
+
+function createRecommendations(user, features, analysisQuality, phases) {
+  const confidence = analysisQuality.poseConfidence;
   const recommendations = [
     {
       detail: `${user.name}님의 영상에서 추정한 머리 좌우 이동은 화면 폭 기준 ${features.headSwayCm.toFixed(1)}%입니다. 실제 거리 환산 전까지는 상대 지표로 해석하세요.`,
       drill: "정면 또는 후방 카메라를 고정하고 하프스윙에서 머리 기준선을 유지하는 연습을 진행하세요.",
+      evidenceMetrics: {
+        head_sway_proxy: `${features.headSwayCm.toFixed(1)}% frame width`,
+      },
       id: "pose-head-stability",
       metric: "head_sway_proxy",
+      overlayFrameRange: phaseFrameRange(phases, "backswing_top"),
       phase: "backswing_top",
+      reason: "백스윙 상단에서 머리 기준점이 많이 흔들리면 다운스윙에서 같은 임팩트 위치로 돌아오기 어려워질 수 있습니다.",
       severity: features.headSwayCm > 8 ? "warning" : "info",
+      suggestion: "상체를 고정하려고 버티기보다, 어드레스 때 만든 척추 축과 발 압력 변화를 일정하게 유지하세요.",
       title: "백스윙 축 이동을 확인하세요",
       value: `${features.headSwayCm.toFixed(1)}%`,
     },
     {
       detail: `현재 keypoint 평균 신뢰도는 ${(confidence * 100).toFixed(0)}%입니다. 조명, 카메라 고정, 전신 프레임이 안정될수록 분석 품질이 올라갑니다.`,
       drill: "발끝부터 머리까지 프레임 안에 넣고 카메라를 흔들리지 않게 고정한 뒤 다시 촬영하세요.",
+      evidenceMetrics: {
+        club_detection_rate: `${(analysisQuality.clubDetectionRate * 100).toFixed(0)}%`,
+        pose_confidence: `${(confidence * 100).toFixed(0)}%`,
+      },
       id: "pose-capture-quality",
       metric: "pose_confidence",
+      overlayFrameRange: phaseFrameRange(phases, "address"),
       phase: "address",
+      reason: "낮은 keypoint 신뢰도에서는 팔, 골반, 클럽 위치가 흔들려 실제 동작보다 과장되거나 누락된 피드백이 나올 수 있습니다.",
       severity: confidence < 0.55 ? "warning" : "info",
+      suggestion: "동일한 촬영 각도에서 밝은 조명과 고정 카메라로 전신과 클럽 헤드를 프레임 안에 유지하세요.",
       title: "촬영 품질을 기준화하세요",
       value: `${(confidence * 100).toFixed(0)}%`,
     },
   ];
+
+  if (analysisQuality.isFallback) {
+    recommendations.unshift({
+      detail: analysisQuality.warning,
+      drill: "Python pose 환경과 MediaPipe 설치 상태를 확인한 뒤 같은 영상을 다시 분석하세요.",
+      evidenceMetrics: {
+        model: analysisQuality.model,
+        runtime: analysisQuality.runtime,
+      },
+      id: "pose-fallback-warning",
+      metric: "pose_runtime",
+      overlayFrameRange: phaseFrameRange(phases, "address"),
+      phase: "address",
+      reason: "fallback synthetic pose는 영상에서 실제 관절을 검출한 결과가 아니므로 스윙 진단 점수나 세부 자세 판단으로 사용하면 안 됩니다.",
+      severity: "risk",
+      suggestion: "현재 결과는 UI와 데이터 흐름 확인용으로만 보고, 실제 코칭 판단은 real pose analysis가 완료된 결과에서 진행하세요.",
+      title: "실제 자세 분석이 아닙니다",
+      value: "fallback",
+    });
+  }
 
   return recommendations;
 }
@@ -448,22 +518,35 @@ export function normalizeWorkerResult({ analysisId, createdAt, input, raw, user 
   const height = Math.max(Math.round(numberOr(raw.height, 720)), 1);
   const pose2dFrames = normalizeFrames(raw, width, height, input);
   const durationSec = Math.max(numberOr(raw.durationSec, 0), pose2dFrames.at(-1)?.timeSec || 1);
-  const confidence = averageConfidence(pose2dFrames);
-  const headSway = headSwayPercent(pose2dFrames);
-  const overall = Math.round(clamp(72 + confidence * 20 - Math.min(headSway, 12), 45, 96));
+  const confidence = averagePoseConfidence(pose2dFrames);
   const phases = createPhases(pose2dFrames, fps, durationSec);
+  const analysisQuality = normalizeAnalysisQuality(raw, pose2dFrames, confidence);
+  const tempoRatio = tempoRatioFromPhases(phases);
+  const proxyMetrics = computeSwingProxyMetrics({
+    analysisQuality,
+    frames: pose2dFrames,
+    phases,
+    tempoRatio,
+  });
+  const headSway = proxyMetrics.head_sway_proxy;
+  const clubPath = clubHeadPathProxy(pose2dFrames, phases.find((phase) => phase.name === "impact"), input.dominantHand);
+  const overall = analysisQuality.isFallback
+    ? 0
+    : Math.round(clamp(72 + confidence * 20 - Math.min(headSway, 12), 45, 96));
   const features = {
-    clubPath: "neutral",
+    clubPath,
     headSwayCm: Number(headSway.toFixed(1)),
-    hipTurnDeg: 0,
-    pelvisSwayCm: 0,
-    shoulderTurnDeg: 0,
-    spineAngleDeg: 0,
-    tempoRatio: tempoRatioFromPhases(phases),
-    xFactorDeg: 0,
+    hipTurnDeg: proxyMetrics.hip_turn_proxy,
+    pelvisSwayCm: proxyMetrics.pelvis_sway_proxy,
+    proxyMetrics,
+    shoulderTurnDeg: proxyMetrics.shoulder_turn_proxy,
+    spineAngleDeg: proxyMetrics.address_spine_angle_proxy,
+    tempoRatio,
+    xFactorDeg: Number(Math.abs(proxyMetrics.shoulder_turn_proxy - proxyMetrics.hip_turn_proxy).toFixed(1)),
   };
 
   return {
+    analysisQuality,
     createdAt,
     features,
     id: analysisId,
@@ -475,14 +558,22 @@ export function normalizeWorkerResult({ analysisId, createdAt, input, raw, user 
     },
     phases,
     pose2dFrames,
-    recommendations: createRecommendations(user, pose2dFrames, features),
-    scores: {
-      backswing: Math.round(clamp(overall - 3, 0, 100)),
-      balance: Math.round(clamp(overall + 2, 0, 100)),
-      impact: Math.round(clamp(overall - 6, 0, 100)),
-      overall,
-      setup: Math.round(clamp(overall + 4, 0, 100)),
-    },
+    recommendations: createRecommendations(user, features, analysisQuality, phases),
+    scores: analysisQuality.isFallback
+      ? {
+          backswing: 0,
+          balance: 0,
+          impact: 0,
+          overall: 0,
+          setup: 0,
+        }
+      : {
+          backswing: Math.round(clamp(overall - 3, 0, 100)),
+          balance: Math.round(clamp(overall + 2, 0, 100)),
+          impact: Math.round(clamp(overall - 6, 0, 100)),
+          overall,
+          setup: Math.round(clamp(overall + 4, 0, 100)),
+        },
     status: "completed",
     video: {
       durationSec: Number(durationSec.toFixed(3)),

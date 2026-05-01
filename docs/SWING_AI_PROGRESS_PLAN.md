@@ -63,6 +63,7 @@
 - [x] MediaPipe 네이티브 크래시 격리 및 fallback pose job 지속 처리
 - [x] 전용 pose Python 환경 `.venv-pose` 우선 사용 및 `setup:pose`/`check:pose` 검증 스크립트 추가
 - [x] MediaPipe 의존성 설치 후 실제 영상에서 keypoint 검증
+- [x] 실제 영상 keypoint 품질 확인용 overlay preview contact sheet 생성 도구 추가
 - [ ] 실제 클럽 head/grip 전용 검출 모델 또는 보정 UI 추가
 
 예시 데이터 운영 원칙:
@@ -75,6 +76,7 @@
 - 2026-05-01 기준 Python 3.13용 MediaPipe wheel은 `mp.solutions`가 노출되지 않아 기본 worker는 안전한 fallback pose로 UI/API를 검증한다.
 - `.venv-pose`는 Python 3.11, `mediapipe==0.10.21`, `opencv-contrib-python==4.11.0.86`, `numpy==1.26.4` 조합으로 고정한다.
 - `/tmp/golfdb-test-video.mp4` 로컬 샘플 기준 `npm run check:pose -- --require-real /tmp/golfdb-test-video.mp4`가 `model=mediapipe`, `runtime=mediapipe_solutions`, `frames=44`, `fallbackReason=null`로 통과했다.
+- `npm run preview:pose -- --require-real /tmp/golfdb-test-video.mp4 /tmp/golflog-pose-preview.jpg`로 로컬 overlay preview를 생성해 프레임별 keypoint 품질을 육안 확인한다.
 - 제한된 샌드박스/비 GUI 셸에서는 macOS 네이티브 그래픽 런타임 제한 때문에 MediaPipe가 fallback으로 떨어질 수 있으므로, 실제 검증은 일반 로컬 실행 환경에서 확인한다.
 - MediaPipe Tasks 모델은 `/Volumes/X31/golflog-data/models/pose_landmarker_full.task`에 로컬 보관하며 Git에는 올리지 않는다. 현재 Phase 1 baseline은 Tasks가 아니라 `mp.solutions` 런타임이다.
 
@@ -148,6 +150,6 @@
 
 ## 다음 실행 순서
 
-1. GolfDB 등 공개 샘플 영상에서 실제 keypoint 품질을 시각적으로 확인
+1. overlay preview 기준으로 keypoint 누락/오탐 패턴을 기록
 2. 실제 클럽 head/grip 전용 검출 모델 또는 수동 보정 UI 추가
 3. phase별 추천 문구와 보정된 구간 기준 리포트 정합성 점검

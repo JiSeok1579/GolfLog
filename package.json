@@ -8,6 +8,7 @@
     "check:pose": "bash scripts/check-pose-runtime.sh",
     "dev": "vite --host 127.0.0.1",
     "dev:api": "node server/server.js",
+    "preview:pose": "bash scripts/render-pose-preview.sh",
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview --host 127.0.0.1",
     "setup:pose": "bash scripts/setup-pose-runtime.sh",

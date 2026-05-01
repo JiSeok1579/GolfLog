@@ -19,6 +19,18 @@ type AnonymousResponse = {
 
 export type AuthResponse = AuthenticatedResponse | AnonymousResponse;
 
+export type SwingAnalysisStatusResponse = {
+  analysisId: string;
+  currentStage?: string;
+  error?: string | null;
+  progress?: number;
+  status: SwingAnalysisStatus;
+};
+
+export type CreateSwingAnalysisResponse = SwingAnalysisStatusResponse & {
+  result?: SwingAnalysisResult;
+};
+
 async function parseJson<T>(response: Response): Promise<T> {
   const body = (await response.json()) as T;
   if (!response.ok) {
@@ -70,7 +82,23 @@ export async function saveAppData(data: AppData) {
   return parseJson<{ data: AppData }>(response);
 }
 
-export async function createSwingAnalysis(input: NewSwingAnalysisInput) {
+export async function createSwingAnalysis(input: NewSwingAnalysisInput & { videoFile?: File }) {
+  if (input.videoFile) {
+    const body = new FormData();
+    body.append("video", input.videoFile);
+    body.append("videoName", input.videoName);
+    body.append("club", input.club);
+    body.append("viewAngle", input.viewAngle);
+    body.append("dominantHand", input.dominantHand);
+
+    const response = await fetch("/api/analysis", {
+      body,
+      credentials: "include",
+      method: "POST",
+    });
+    return parseJson<CreateSwingAnalysisResponse>(response);
+  }
+
   const response = await fetch("/api/analysis", {
     body: JSON.stringify(input),
     credentials: "include",
@@ -79,7 +107,7 @@ export async function createSwingAnalysis(input: NewSwingAnalysisInput) {
     },
     method: "POST",
   });
-  return parseJson<{ analysisId: string; status: SwingAnalysisStatus; result: SwingAnalysisResult }>(response);
+  return parseJson<CreateSwingAnalysisResponse>(response);
 }
 
 export async function fetchSwingAnalysis(analysisId: string) {
@@ -93,7 +121,7 @@ export async function fetchSwingAnalysisStatus(analysisId: string) {
   const response = await fetch(`/api/analysis/${encodeURIComponent(analysisId)}/status`, {
     credentials: "include",
   });
-  return parseJson<{ analysisId: string; status: SwingAnalysisStatus }>(response);
+  return parseJson<SwingAnalysisStatusResponse>(response);
 }
 
 export async function fetchSwingAnalysisFrame(analysisId: string, frame: number) {

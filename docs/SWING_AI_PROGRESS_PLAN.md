@@ -46,10 +46,16 @@
 
 목표: 영상에서 사람 keypoint와 클럽 keypoint를 추출한다.
 
-- MediaPipe Pose baseline부터 시작한다.
-- 클럽 head/grip 검출은 초기에는 휴리스틱 또는 수동 보정 가능 구조로 둔다.
-- 모델 산출물은 Phase 0의 `pose2dFrames` JSON에 맞춘다.
-- Python 분석 서비스가 필요해지면 Node API 뒤에 로컬 worker로 붙인다.
+- [x] Node API에서 `multipart/form-data` 영상 업로드 수신
+- [x] 업로드 영상을 로컬 데이터 디렉터리의 `videos/` 하위에 저장
+- [x] 분석 job 상태를 `queued/processing/completed/failed`로 관리
+- [x] Node에서 `workers/pose/analyze_pose.py` worker 실행
+- [x] worker raw output을 `SwingAnalysisResult` 스키마로 정규화
+- [x] 정규화 결과를 로컬 데이터 디렉터리의 `analysis/` 하위에 저장
+- [x] 프론트엔드에서 status polling 후 결과 조회
+- [x] video currentTime 기준으로 가까운 pose frame overlay 표시
+- [ ] MediaPipe 의존성 설치 후 실제 영상에서 keypoint 검증
+- [ ] 클럽 head/grip 전용 검출 모델 또는 보정 UI 추가
 
 완료 기준:
 
@@ -116,7 +122,7 @@
 
 ## 다음 실행 순서
 
-1. 실제 영상 바이너리 저장 방식 결정
-2. 분석 기록 목록과 이전 결과 재열기 구현
-3. Phase 1용 Python worker 디렉터리와 실제 pose 산출 JSON 설계
-4. MediaPipe baseline으로 `pose2dFrames` 실제 생성
+1. `python3 -m pip install -r workers/pose/requirements.txt`로 MediaPipe baseline 의존성 설치
+2. 실제 스윙 영상으로 worker output 품질 확인
+3. 분석 기록 목록과 이전 결과 재열기 구현
+4. 클럽 head/grip 추정 고도화

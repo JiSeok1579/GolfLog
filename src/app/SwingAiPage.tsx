@@ -3,7 +3,7 @@ import { Activity, Play, Upload } from "lucide-react";
 import { Button } from "../components/ui/Button";
 import { Card } from "../components/ui/Card";
 import { Chip } from "../components/ui/Chip";
-import { createSwingAnalysis } from "../data/api";
+import { createSwingAnalysis, fetchSwingAnalysis, fetchSwingAnalysisStatus } from "../data/api";
 import { CLUBS, clubLabel } from "../data/clubs";
 import { text, useLanguage } from "../data/i18n";
 import { newSwingAnalysisSchema, type Club, type SwingAnalysisResult, type SwingDominantHand, type SwingPose2DFrame, type SwingViewAngle } from "../data/schema";
@@ -73,9 +73,16 @@ function SkeletonOverlay({ frame }: { frame: SwingPose2DFrame }) {
   );
 }
 
-function previewFrame(result: SwingAnalysisResult | null) {
+function nearestFrame(result: SwingAnalysisResult | null, currentTime: number) {
   if (!result || result.pose2dFrames.length === 0) return null;
-  return result.pose2dFrames[Math.floor(result.pose2dFrames.length / 2)];
+  const targetFrame = Math.round(currentTime * result.video.fps);
+  return result.pose2dFrames.reduce((best, frame) => {
+    return Math.abs(frame.frame - targetFrame) < Math.abs(best.frame - targetFrame) ? frame : best;
+  }, result.pose2dFrames[0]);
+}
+
+function sleep(ms: number) {
+  return new Promise((resolve) => window.setTimeout(resolve, ms));
 }
 
 export function SwingAiPage() {
@@ -86,7 +93,10 @@ export function SwingAiPage() {
   const [viewAngle, setViewAngle] = useState<SwingViewAngle>("down-the-line");
   const [dominantHand, setDominantHand] = useState<SwingDominantHand>("right");
   const [analysis, setAnalysis] = useState<SwingAnalysisResult | null>(null);
-  const [status, setStatus] = useState<"idle" | "running" | "done">("idle");
+  const [status, setStatus] = useState<"idle" | "queued" | "running" | "done">("idle");
+  const [progress, setProgress] = useState(0);
+  const [currentStage, setCurrentStage] = useState("");
+  const [currentTime, setCurrentTime] = useState(0);
   const [error, setError] = useState("");
 
   useEffect(() => {
@@ -97,10 +107,11 @@ export function SwingAiPage() {
 
     const url = URL.createObjectURL(videoFile);
     setVideoPreviewUrl(url);
+    setCurrentTime(0);
     return () => URL.revokeObjectURL(url);
   }, [videoFile]);
 
-  const frame = previewFrame(analysis);
+  const frame = nearestFrame(analysis, currentTime);
   const scoreRows = useMemo(
     () =>
       analysis
@@ -138,9 +149,41 @@ export function SwingAiPage() {
 
     try {
       setStatus("running");
-      const response = await createSwingAnalysis(parsed.data);
-      setAnalysis(response.result);
-      setStatus("done");
+      setAnalysis(null);
+      setProgress(0);
+      setCurrentStage("");
+      const response = await createSwingAnalysis({ ...parsed.data, videoFile });
+      setProgress(response.progress ?? 0);
+      setCurrentStage(response.currentStage ?? response.status);
+
+      if (response.result) {
+        setAnalysis(response.result);
+        setProgress(100);
+        setStatus("done");
+        return;
+      }
+
+      setStatus(response.status === "queued" ? "queued" : "running");
+      for (let attempt = 0; attempt < 180; attempt += 1) {
+        await sleep(1000);
+        const statusResponse = await fetchSwingAnalysisStatus(response.analysisId);
+        setProgress(statusResponse.progress ?? 0);
+        setCurrentStage(statusResponse.currentStage ?? statusResponse.status);
+
+        if (statusResponse.status === "failed") {
+          throw new Error(statusResponse.error || "analysis_failed");
+        }
+        if (statusResponse.status === "completed") {
+          const resultResponse = await fetchSwingAnalysis(response.analysisId);
+          setAnalysis(resultResponse.result);
+          setProgress(100);
+          setStatus("done");
+          return;
+        }
+        setStatus(statusResponse.status === "queued" ? "queued" : "running");
+      }
+
+      throw new Error("analysis_timeout");
     } catch {
       setStatus("idle");
       setError(text(language, "분석 결과를 저장하지 못했습니다. 로컬 API 상태를 확인해주세요.", "Could not save the analysis result. Check the local API."));
@@ -155,7 +198,7 @@ export function SwingAiPage() {
           <h1>{text(language, "스윙 AI", "Swing AI")}</h1>
           <p>{text(language, "스윙 영상 기준으로 자세, 구간, 추천을 한 화면에서 확인합니다.", "Review posture, phases, and recommendations from a swing video.")}</p>
         </div>
-        <Chip tone="accent">{status === "running" ? "Analyzing" : status === "done" ? "Result" : "Ready"}</Chip>
+        <Chip tone="accent">{status === "running" || status === "queued" ? `${progress}%` : status === "done" ? "Result" : "Ready"}</Chip>
       </header>
 
       <div className="swing-ai-grid">
@@ -209,9 +252,9 @@ export function SwingAiPage() {
           {error ? <div className="form-error">{error}</div> : null}
 
           <div className="save-row">
-            <Button disabled={status === "running"} type="submit">
+            <Button disabled={status === "running" || status === "queued"} type="submit">
               <Play size={16} />
-              {status === "running" ? text(language, "분석 중", "Analyzing") : text(language, "분석 시작", "Start Analysis")}
+              {status === "running" || status === "queued" ? text(language, "분석 중", "Analyzing") : text(language, "분석 시작", "Start Analysis")}
             </Button>
           </div>
         </form>
@@ -225,9 +268,14 @@ export function SwingAiPage() {
             <Chip>{frame ? `${frame.frame}f` : text(language, "대기", "Idle")}</Chip>
           </div>
           <div className="swing-video-frame">
-            {videoPreviewUrl ? <video controls muted playsInline src={videoPreviewUrl} /> : <div className="swing-video-placeholder">{text(language, "영상을 선택하세요", "Select a video")}</div>}
+            {videoPreviewUrl ? (
+              <video controls muted onTimeUpdate={(event) => setCurrentTime(event.currentTarget.currentTime)} playsInline src={videoPreviewUrl} />
+            ) : (
+              <div className="swing-video-placeholder">{text(language, "영상을 선택하세요", "Select a video")}</div>
+            )}
             {frame ? <SkeletonOverlay frame={frame} /> : null}
           </div>
+          {status === "running" || status === "queued" ? <div className="swing-analysis-status">{currentStage || status}</div> : null}
         </Card>
       </div>
 

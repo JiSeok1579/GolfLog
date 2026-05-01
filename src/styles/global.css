@@ -1276,6 +1276,18 @@ main {
   text-transform: uppercase;
 }
 
+.swing-analysis-status {
+  background: var(--w-paper-2);
+  border: 1px solid var(--w-line);
+  border-radius: 6px;
+  color: var(--w-muted);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  margin-top: 10px;
+  padding: 9px 10px;
+  text-transform: uppercase;
+}
+
 .swing-skeleton-overlay {
   inset: 0;
   position: absolute;

@@ -3,6 +3,9 @@ import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import http from "node:http";
+import { normalizeWorkerResult } from "./analysis/normalizeWorkerResult.js";
+import { runPoseWorker } from "./analysis/runPoseWorker.js";
+import { analysisPaths } from "./analysis/storage.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const rootDir = resolve(__dirname, "..");
@@ -31,6 +34,7 @@ function emptyStore() {
     version: 1,
     users: [],
     dataByUser: {},
+    analysisJobsByUser: {},
     swingAnalysesByUser: {},
   };
 }
@@ -70,6 +74,7 @@ function readStore() {
     return {
       version: 1,
       users: Array.isArray(store.users) ? store.users.map(normalizeUser) : [],
+      analysisJobsByUser: store.analysisJobsByUser && typeof store.analysisJobsByUser === "object" ? store.analysisJobsByUser : {},
       dataByUser: store.dataByUser && typeof store.dataByUser === "object" ? store.dataByUser : {},
       swingAnalysesByUser: store.swingAnalysesByUser && typeof store.swingAnalysesByUser === "object" ? store.swingAnalysesByUser : {},
     };
@@ -147,6 +152,76 @@ function readJson(req) {
   });
 }
 
+function readBodyBuffer(req, maxBytes = 1024 * 1024 * 260) {
+  return new Promise((resolveBody, reject) => {
+    const chunks = [];
+    let size = 0;
+    req.on("data", (chunk) => {
+      size += chunk.length;
+      if (size > maxBytes) {
+        reject(new Error("Body too large"));
+        req.destroy();
+        return;
+      }
+      chunks.push(chunk);
+    });
+    req.on("end", () => resolveBody(Buffer.concat(chunks)));
+    req.on("error", reject);
+  });
+}
+
+function parseMultipart(req, buffer) {
+  const contentType = req.headers["content-type"] || "";
+  const boundaryMatch = contentType.match(/boundary=(?:"([^"]+)"|([^;]+))/i);
+  if (!boundaryMatch) return null;
+
+  const boundary = Buffer.from(`--${boundaryMatch[1] || boundaryMatch[2]}`, "latin1");
+  const fields = {};
+  const files = {};
+  let position = buffer.indexOf(boundary);
+
+  while (position !== -1) {
+    position += boundary.length;
+    if (buffer.slice(position, position + 2).toString("latin1") === "--") break;
+    if (buffer.slice(position, position + 2).toString("latin1") === "\r\n") position += 2;
+
+    const nextBoundary = buffer.indexOf(boundary, position);
+    if (nextBoundary === -1) break;
+
+    let part = buffer.slice(position, nextBoundary);
+    if (part.slice(-2).toString("latin1") === "\r\n") part = part.slice(0, -2);
+
+    const headerEnd = part.indexOf(Buffer.from("\r\n\r\n", "latin1"));
+    if (headerEnd !== -1) {
+      const headerText = part.slice(0, headerEnd).toString("latin1");
+      const data = part.slice(headerEnd + 4);
+      const nameMatch = headerText.match(/name="([^"]+)"/i);
+      const fileNameMatch = headerText.match(/filename="([^"]*)"/i);
+      const typeMatch = headerText.match(/content-type:\s*([^\r\n]+)/i);
+      if (nameMatch) {
+        const name = nameMatch[1];
+        if (fileNameMatch) {
+          files[name] = {
+            contentType: typeMatch ? typeMatch[1].trim() : "application/octet-stream",
+            data,
+            fileName: fileNameMatch[1],
+          };
+        } else {
+          fields[name] = data.toString("utf8");
+        }
+      }
+    }
+
+    position = nextBoundary;
+  }
+
+  return { fields, files };
+}
+
+function isMultipartRequest(req) {
+  return String(req.headers["content-type"] || "").toLowerCase().startsWith("multipart/form-data");
+}
+
 function authFromRequest(req, store) {
   const cookies = parseCookies(req.headers.cookie);
   const deviceId = cookies[cookieName];
@@ -189,12 +264,40 @@ function validateAppData(value) {
   return true;
 }
 
+function normalizeClub(value) {
+  const raw = String(value || "").trim();
+  if (validClubs.has(raw)) return raw;
+
+  const clubMap = {
+    driver: "Driver",
+    hybrid: "Hybrid",
+    iron: "7I",
+    putter: "PW",
+    wedge: "PW",
+    wood: "Wood",
+  };
+  return clubMap[raw.toLowerCase()] || "";
+}
+
+function normalizeViewAngle(value) {
+  const raw = String(value || "").trim();
+  if (validViewAngles.has(raw)) return raw;
+
+  const viewMap = {
+    front: "face-on",
+    rear: "down-the-line",
+    side: "down-the-line",
+    unknown: "down-the-line",
+  };
+  return viewMap[raw.toLowerCase()] || "";
+}
+
 function normalizeAnalysisInput(body) {
   if (!body || typeof body !== "object") return null;
 
   const videoName = String(body.videoName || "").trim();
-  const club = String(body.club || "Driver");
-  const viewAngle = String(body.viewAngle || "down-the-line");
+  const club = normalizeClub(body.club || body.clubType || "Driver");
+  const viewAngle = normalizeViewAngle(body.viewAngle || "down-the-line");
   const dominantHand = String(body.dominantHand || "right");
   const videoSizeBytes = Number(body.videoSizeBytes || 0);
 
@@ -209,6 +312,17 @@ function normalizeAnalysisInput(body) {
     viewAngle,
     dominantHand,
   };
+}
+
+function normalizeUploadedAnalysisInput(fields, file) {
+  const body = {
+    club: fields.club || fields.clubType,
+    dominantHand: fields.dominantHand,
+    videoName: fields.videoName || file?.fileName,
+    videoSizeBytes: file?.data?.length || 0,
+    viewAngle: fields.viewAngle,
+  };
+  return normalizeAnalysisInput(body);
 }
 
 function maybeMirrorPoint(point, dominantHand) {
@@ -451,8 +565,17 @@ function analysisListForUser(store, userId) {
   return Array.isArray(analyses) ? analyses : [];
 }
 
+function analysisJobListForUser(store, userId) {
+  const jobs = store.analysisJobsByUser?.[userId];
+  return Array.isArray(jobs) ? jobs : [];
+}
+
 function findAnalysis(store, userId, analysisId) {
   return analysisListForUser(store, userId).find((analysis) => analysis.id === analysisId) || null;
+}
+
+function findAnalysisJob(store, userId, analysisId) {
+  return analysisJobListForUser(store, userId).find((job) => job.analysisId === analysisId) || null;
 }
 
 function findNearestPoseFrame(analysis, frame) {
@@ -460,6 +583,91 @@ function findNearestPoseFrame(analysis, frame) {
     if (!best) return current;
     return Math.abs(current.frame - frame) < Math.abs(best.frame - frame) ? current : best;
   }, null);
+}
+
+function upsertAnalysisJob(store, userId, job) {
+  const jobs = analysisJobListForUser(store, userId);
+  return {
+    ...store,
+    analysisJobsByUser: {
+      ...store.analysisJobsByUser,
+      [userId]: [job, ...jobs.filter((item) => item.analysisId !== job.analysisId)].slice(0, 60),
+    },
+  };
+}
+
+function updateAnalysisJob(userId, analysisId, patch) {
+  const store = readStore();
+  const current = findAnalysisJob(store, userId, analysisId);
+  if (!current) return;
+
+  const nextJob = {
+    ...current,
+    ...patch,
+    updatedAt: new Date().toISOString(),
+  };
+  writeStore(upsertAnalysisJob(store, userId, nextJob));
+}
+
+function completeAnalysisJob(userId, analysisId, result) {
+  const store = readStore();
+  const current = findAnalysisJob(store, userId, analysisId);
+  const analyses = analysisListForUser(store, userId);
+  const nextJob = {
+    ...(current || { analysisId }),
+    currentStage: "completed",
+    progress: 100,
+    status: "completed",
+    updatedAt: new Date().toISOString(),
+  };
+  writeStore({
+    ...upsertAnalysisJob(store, userId, nextJob),
+    swingAnalysesByUser: {
+      ...store.swingAnalysesByUser,
+      [userId]: [result, ...analyses.filter((analysis) => analysis.id !== analysisId)].slice(0, 30),
+    },
+  });
+}
+
+async function runUploadedAnalysisJob({ analysisId, input, paths, user }) {
+  try {
+    updateAnalysisJob(user.id, analysisId, {
+      currentStage: "pose2d_estimation",
+      progress: 25,
+      status: "processing",
+    });
+    await runPoseWorker({
+      club: input.club,
+      dominantHand: input.dominantHand,
+      outputPath: paths.workerOutputPath,
+      rootDir,
+      videoPath: paths.videoPath,
+      viewAngle: input.viewAngle,
+    });
+
+    updateAnalysisJob(user.id, analysisId, {
+      currentStage: "normalizing_result",
+      progress: 82,
+      status: "processing",
+    });
+    const raw = JSON.parse(readFileSync(paths.workerOutputPath, "utf8"));
+    const result = normalizeWorkerResult({
+      analysisId,
+      createdAt: new Date().toISOString(),
+      input,
+      raw,
+      user,
+    });
+    writeFileSync(paths.resultPath, `${JSON.stringify(result, null, 2)}\n`, "utf8");
+    completeAnalysisJob(user.id, analysisId, result);
+  } catch (error) {
+    updateAnalysisJob(user.id, analysisId, {
+      currentStage: "failed",
+      error: error instanceof Error ? error.message : "analysis_failed",
+      progress: 100,
+      status: "failed",
+    });
+  }
 }
 
 async function handleApi(req, res) {
@@ -600,6 +808,61 @@ async function handleApi(req, res) {
   }
 
   if (req.method === "POST" && url.pathname === "/api/analysis") {
+    if (isMultipartRequest(req)) {
+      let multipart;
+      try {
+        const buffer = await readBodyBuffer(req);
+        multipart = parseMultipart(req, buffer);
+      } catch {
+        sendJson(res, 400, { error: "invalid_multipart" });
+        return;
+      }
+
+      const videoFile = multipart?.files?.video;
+      const input = normalizeUploadedAnalysisInput(multipart?.fields || {}, videoFile);
+      if (!input || !videoFile || videoFile.data.length === 0) {
+        sendJson(res, 400, { error: "invalid_analysis_upload" });
+        return;
+      }
+
+      const analysisId = createId("analysis");
+      const paths = analysisPaths(dataFile, analysisId, videoFile.fileName, videoFile.contentType);
+      try {
+        writeFileSync(paths.videoPath, videoFile.data);
+      } catch {
+        sendJson(res, 500, { error: "video_save_failed" });
+        return;
+      }
+
+      const now = new Date().toISOString();
+      const job = {
+        analysisId,
+        createdAt: now,
+        currentStage: "queued",
+        error: null,
+        input: {
+          club: input.club,
+          dominantHand: input.dominantHand,
+          videoName: input.videoName,
+          viewAngle: input.viewAngle,
+        },
+        progress: 0,
+        resultPath: paths.resultPath,
+        status: "queued",
+        updatedAt: now,
+        videoPath: paths.videoPath,
+      };
+      writeStore(upsertAnalysisJob(store, auth.user.id, job));
+      void runUploadedAnalysisJob({ analysisId, input, paths, user: auth.user });
+      sendJson(res, 202, {
+        analysisId,
+        currentStage: job.currentStage,
+        progress: job.progress,
+        status: job.status,
+      });
+      return;
+    }
+
     let body;
     try {
       body = await readJson(req);
@@ -655,13 +918,39 @@ async function handleApi(req, res) {
   if (req.method === "GET" && analysisMatch) {
     const analysisId = decodeURIComponent(analysisMatch[1]);
     const analysis = findAnalysis(store, auth.user.id, analysisId);
-    if (!analysis) {
+    const job = findAnalysisJob(store, auth.user.id, analysisId);
+
+    if (analysisMatch[2] === "status") {
+      if (job) {
+        sendJson(res, 200, {
+          analysisId,
+          currentStage: job.currentStage || "",
+          error: job.error || null,
+          progress: typeof job.progress === "number" ? job.progress : analysis ? 100 : 0,
+          status: job.status || analysis?.status || "completed",
+        });
+        return;
+      }
+      if (analysis) {
+        sendJson(res, 200, { analysisId: analysis.id, currentStage: "completed", error: null, progress: 100, status: analysis.status });
+        return;
+      }
       sendJson(res, 404, { error: "analysis_not_found" });
       return;
     }
 
-    if (analysisMatch[2] === "status") {
-      sendJson(res, 200, { analysisId: analysis.id, status: analysis.status });
+    if (!analysis) {
+      if (job) {
+        sendJson(res, 202, {
+          analysisId,
+          currentStage: job.currentStage || "",
+          error: job.error || null,
+          progress: typeof job.progress === "number" ? job.progress : 0,
+          status: job.status,
+        });
+        return;
+      }
+      sendJson(res, 404, { error: "analysis_not_found" });
       return;
     }
 

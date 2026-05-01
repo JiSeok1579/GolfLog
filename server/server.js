@@ -3,6 +3,7 @@ import { createReadStream, existsSync, mkdirSync, readFileSync, renameSync, stat
 import { dirname, extname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import http from "node:http";
+import { withCoachReport } from "./analysis/coachReport.js";
 import { normalizeWorkerResult } from "./analysis/normalizeWorkerResult.js";
 import { runPoseWorker } from "./analysis/runPoseWorker.js";
 import { analysisPaths } from "./analysis/storage.js";
@@ -65,6 +66,10 @@ function initialData(user) {
     clubShots: [],
     healthEntries: [],
   };
+}
+
+function appDataForUser(store, user) {
+  return store.dataByUser[user.id] || initialData(user);
 }
 
 function readStore() {
@@ -523,7 +528,7 @@ function mockPoseFrames(dominantHand) {
   ];
 }
 
-function createMockAnalysis(user, input) {
+function createMockAnalysis(user, input, appData) {
   const id = createId("analysis");
   const headSway = input.viewAngle === "face-on" ? 6.2 : 4.8;
   const xFactor = input.club === "Driver" ? 31 : 27;
@@ -541,7 +546,7 @@ function createMockAnalysis(user, input) {
     warning: "Sample analysis uses generated pose data and should not be treated as a real swing analysis.",
   };
 
-  return {
+  return withCoachReport({
     analysisQuality,
     id,
     createdAt: new Date().toISOString(),
@@ -646,7 +651,7 @@ function createMockAnalysis(user, input) {
         value: input.club === "Driver" ? "in-to-out" : "neutral",
       },
     ],
-  };
+  }, appData);
 }
 
 function analysisListForUser(store, userId) {
@@ -940,7 +945,7 @@ function upsertClubPathRecommendation(recommendations, recommendation) {
   return next;
 }
 
-function refreshAnalysisReportMetrics(analysis, user) {
+function refreshAnalysisReportMetrics(analysis, user, appData) {
   const baselineAnalysis = withMetricBaselines(analysis);
   const tempoRatio = tempoRatioFromPhases(baselineAnalysis.phases);
   const phaseAdjusted = {
@@ -955,7 +960,7 @@ function refreshAnalysisReportMetrics(analysis, user) {
     ...phaseAdjusted.features,
     clubPath,
   };
-  return {
+  return withCoachReport({
     ...phaseAdjusted,
     features,
     recommendations: upsertClubPathRecommendation(
@@ -971,7 +976,7 @@ function refreshAnalysisReportMetrics(analysis, user) {
           setup: 0,
         }
       : recomputeScoresForClubPath(scoreBaseline(phaseAdjusted), clubPath),
-  };
+  }, appData);
 }
 
 function updateAnalysisForUser(store, userId, analysisId, updater) {
@@ -1057,8 +1062,10 @@ async function runUploadedAnalysisJob({ analysisId, input, paths, user }) {
       status: "processing",
     });
     const raw = JSON.parse(readFileSync(paths.workerOutputPath, "utf8"));
+    const currentStore = readStore();
     const result = normalizeWorkerResult({
       analysisId,
+      appData: appDataForUser(currentStore, user),
       createdAt: new Date().toISOString(),
       input,
       raw,
@@ -1301,7 +1308,7 @@ async function handleApi(req, res) {
       return;
     }
 
-    const analysis = createMockAnalysis(auth.user, input);
+    const analysis = createMockAnalysis(auth.user, input, appDataForUser(store, auth.user));
     const userAnalyses = analysisListForUser(store, auth.user.id);
     const nextStore = {
       ...store,
@@ -1351,6 +1358,7 @@ async function handleApi(req, res) {
           updatedAt: now,
         },
         auth.user,
+        appDataForUser(store, auth.user),
       ),
     );
     if (!updated) {
@@ -1406,7 +1414,7 @@ async function handleApi(req, res) {
         ),
         updatedAt: now,
       };
-      return refreshAnalysisReportMetrics(corrected, auth.user);
+      return refreshAnalysisReportMetrics(corrected, auth.user, appDataForUser(store, auth.user));
     });
     if (!updated) {
       sendJson(res, 404, { error: "analysis_not_found" });

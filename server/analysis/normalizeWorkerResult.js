@@ -1,4 +1,5 @@
 import { averagePoseConfidence, clubHeadPathProxy, computeSwingProxyMetrics } from "./metrics.js";
+import { withCoachReport } from "./coachReport.js";
 
 const allowedKeypoints = new Set([
   "head",
@@ -512,7 +513,7 @@ function createRecommendations(user, features, analysisQuality, phases) {
   return recommendations;
 }
 
-export function normalizeWorkerResult({ analysisId, createdAt, input, raw, user }) {
+export function normalizeWorkerResult({ analysisId, appData, createdAt, input, raw, user }) {
   const fps = Math.max(numberOr(raw.fps, 30), 1);
   const width = Math.max(Math.round(numberOr(raw.width, 1280)), 1);
   const height = Math.max(Math.round(numberOr(raw.height, 720)), 1);
@@ -545,7 +546,7 @@ export function normalizeWorkerResult({ analysisId, createdAt, input, raw, user 
     xFactorDeg: Number(Math.abs(proxyMetrics.shoulder_turn_proxy - proxyMetrics.hip_turn_proxy).toFixed(1)),
   };
 
-  return {
+  return withCoachReport({
     analysisQuality,
     createdAt,
     features,
@@ -581,5 +582,5 @@ export function normalizeWorkerResult({ analysisId, createdAt, input, raw, user 
       height,
       width,
     },
-  };
+  }, appData);
 }

@@ -67,7 +67,8 @@
 - [x] keypoint 저신뢰/누락/점프 QA 리포트 생성 도구 추가
 - [x] 프레임별 클럽 grip/head 수동 보정 UI와 저장 API 추가
 - [x] 수동 보정된 club grip/head를 `clubPath`, Impact 점수, 클럽 경로 추천에 재반영
-- [ ] 실제 클럽 head/grip 전용 검출 모델 추가
+- [x] OpenCV 기반 클럽 shaft 후보 검출로 실제 프레임의 `club.grip/head` 우선 추출
+- [ ] 전용 학습 모델 기반 club head/grip 검출로 교체 또는 보강
 
 예시 데이터 운영 원칙:
 
@@ -83,6 +84,7 @@
 - `npm run inspect:pose -- --require-real /tmp/golfdb-test-video.mp4 /tmp/golflog-pose-quality.md`로 keypoint별 저신뢰/누락/점프 프레임을 로컬 Markdown/JSON으로 기록한다.
 - 현재 로컬 샘플 QA 기준으로 missing keypoint와 large jump는 없고, `left_elbow`/`left_wrist`만 각각 14/44 sampled frames에서 confidence 0.2 미만으로 떨어진다. 클럽 grip/head 보정은 손목 confidence가 낮은 구간을 우선 대상으로 둔다.
 - 수동 클럽 보정은 phase 경계를 자동으로 다시 자르지 않는다. phase는 사용자가 보정했을 수 있으므로 현재 단계에서는 `clubPath`, Impact 점수, 추천 문구만 다시 계산한다.
+- MediaPipe body keypoint가 잡힌 프레임에서는 worker가 손목 주변 ROI에서 OpenCV Hough line 기반 클럽 shaft 후보를 먼저 찾고, 실패한 프레임만 기존 손목 기반 가상 클럽 추정값으로 채운다.
 - 제한된 샌드박스/비 GUI 셸에서는 macOS 네이티브 그래픽 런타임 제한 때문에 MediaPipe가 fallback으로 떨어질 수 있으므로, 실제 검증은 일반 로컬 실행 환경에서 확인한다.
 - MediaPipe Tasks 모델은 `/Volumes/X31/golflog-data/models/pose_landmarker_full.task`에 로컬 보관하며 Git에는 올리지 않는다. 현재 Phase 1 baseline은 Tasks가 아니라 `mp.solutions` 런타임이다.
 
@@ -156,6 +158,6 @@
 
 ## 다음 실행 순서
 
-1. 실제 클럽 head/grip 전용 검출 모델 추가
+1. 전용 학습 모델 기반 club head/grip 검출로 교체 또는 보강
 2. phase별 추천 문구와 보정된 구간 기준 리포트 정합성 점검
 3. GolfDB/SwingNet 계열 phase 모델 검토 및 교체 가능성 평가

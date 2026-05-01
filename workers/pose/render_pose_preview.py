@@ -162,9 +162,10 @@ def draw_overlay(image, frame, analysis, source_width, source_height, min_score)
 
     club = frame.get("club")
     if isinstance(club, dict):
+        score = as_float(club.get("score"), 1.0)
         grip = club_point(club.get("grip"), source_width, source_height, target_width, target_height, percent_source)
         head = club_point(club.get("head"), source_width, source_height, target_width, target_height, percent_source)
-        if grip and head:
+        if score >= 0.55 and grip and head:
             cv2.line(image, grip, head, CLUB_COLOR, 3, cv2.LINE_AA)
             cv2.circle(image, grip, 4, CLUB_COLOR, thickness=-1, lineType=cv2.LINE_AA)
             cv2.circle(image, head, 6, CLUB_COLOR, thickness=-1, lineType=cv2.LINE_AA)

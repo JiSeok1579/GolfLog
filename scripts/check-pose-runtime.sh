@@ -50,6 +50,7 @@ const summary = {
   runtime: data.debug?.runtime || "",
   frames: Array.isArray(data.frames) ? data.frames.length : 0,
   frameCount: data.debug?.frameCount || 0,
+  clubDetectedFrames: data.debug?.clubDetectedFrames || 0,
   droppedFrames: data.debug?.droppedFrames || 0,
   fallbackReason: data.debug?.fallbackReason || null,
 };

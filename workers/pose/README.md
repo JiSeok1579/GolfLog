@@ -70,6 +70,8 @@ python3 workers/pose/analyze_pose.py \
 
 The worker runs MediaPipe in an isolated child process. If a native MediaPipe crash occurs, the parent process writes fallback pose frames instead of failing the whole API job. On the current Python 3.13 MediaPipe wheel, `mp.solutions` is not exposed; use `npm run setup:pose` so the worker runs through the Python 3.11 `.venv-pose` runtime. In restricted or non-GUI shells, macOS native graphics access can be blocked and MediaPipe may fall back even when the same command succeeds in the normal local environment.
 
+When MediaPipe returns body keypoints, the worker also runs a local OpenCV club-line detector around the wrist/grip area. Detected shaft candidates are written as frame-level `club.grip`, `club.head`, and `club.score`; when no stable line is found, the Node normalizer still falls back to the hand-based virtual club estimate.
+
 Useful runtime controls:
 
 ```bash

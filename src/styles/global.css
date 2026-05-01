@@ -1509,6 +1509,75 @@ main {
   font-size: 13px;
 }
 
+.swing-phase-editor-card {
+  margin-top: 14px;
+}
+
+.swing-phase-editor-list {
+  display: grid;
+  gap: 9px;
+}
+
+.swing-phase-editor-row {
+  align-items: end;
+  display: grid;
+  gap: 10px;
+  grid-template-columns: minmax(140px, 1fr) minmax(86px, 0.38fr) minmax(86px, 0.38fr);
+}
+
+.swing-phase-editor-seek {
+  appearance: none;
+  background: var(--w-paper-2);
+  border: 1px solid var(--w-line);
+  border-radius: 7px;
+  color: inherit;
+  cursor: pointer;
+  display: grid;
+  font: inherit;
+  gap: 4px;
+  min-height: 46px;
+  padding: 9px 10px;
+  text-align: left;
+}
+
+.swing-phase-editor-seek:hover,
+.swing-phase-editor-seek:focus-visible,
+.swing-phase-editor-seek.is-active {
+  border-color: var(--w-accent);
+  outline: 2px solid rgba(191, 109, 74, 0.16);
+  outline-offset: 2px;
+}
+
+.swing-phase-editor-seek span,
+.swing-phase-editor-row label span {
+  color: var(--w-muted);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  text-transform: uppercase;
+}
+
+.swing-phase-editor-seek small {
+  color: var(--w-ink);
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
+
+.swing-phase-editor-row label {
+  display: grid;
+  gap: 5px;
+}
+
+.swing-phase-editor-row input {
+  min-height: 46px;
+}
+
+.swing-phase-editor-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+  margin-top: 12px;
+}
+
 .swing-recommendation-card {
   margin-top: 14px;
 }
@@ -1741,6 +1810,10 @@ main {
     grid-template-columns: 1fr;
   }
 
+  .swing-phase-editor-row {
+    grid-template-columns: minmax(0, 1fr) repeat(2, minmax(76px, 0.42fr));
+  }
+
   .health-stat-grid,
   .swing-score-grid,
   .health-chart-grid,
@@ -1785,6 +1858,22 @@ main {
 
   .nav-item {
     padding: 0 9px;
+  }
+
+  .swing-phase-editor-row {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .swing-phase-editor-seek {
+    grid-column: 1 / -1;
+  }
+
+  .swing-phase-editor-actions {
+    justify-content: stretch;
+  }
+
+  .swing-phase-editor-actions .button {
+    flex: 1;
   }
 
   .calendar-grid {

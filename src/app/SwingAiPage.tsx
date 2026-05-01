@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent, type KeyboardEvent } from "react";
-import { Activity, History, Play, Sparkles, Upload } from "lucide-react";
+import { Activity, History, Play, RotateCcw, Save, SlidersHorizontal, Sparkles, Upload } from "lucide-react";
 import { Button } from "../components/ui/Button";
 import { Card } from "../components/ui/Card";
 import { Chip } from "../components/ui/Chip";
@@ -9,11 +9,12 @@ import {
   fetchSwingAnalysis,
   fetchSwingAnalysisStatus,
   swingAnalysisVideoUrl,
+  updateSwingAnalysisPhases,
   type SwingAnalysisListItem,
 } from "../data/api";
 import { CLUBS, clubLabel } from "../data/clubs";
 import { text, useLanguage } from "../data/i18n";
-import { newSwingAnalysisSchema, type Club, type SwingAnalysisResult, type SwingDominantHand, type SwingPose2DFrame, type SwingViewAngle } from "../data/schema";
+import { newSwingAnalysisSchema, type Club, type SwingAnalysisResult, type SwingDominantHand, type SwingPhase, type SwingPose2DFrame, type SwingViewAngle } from "../data/schema";
 
 type SwingKeypointName = SwingPose2DFrame["keypoints"][number]["name"];
 
@@ -98,10 +99,10 @@ function phaseStartPercent(result: SwingAnalysisResult, startFrame: number) {
   return Math.max(0, Math.min(100, (startFrame / maxAnalysisFrame(result)) * 100));
 }
 
-function currentPhaseName(result: SwingAnalysisResult | null, currentTime: number) {
+function currentPhaseName(result: SwingAnalysisResult | null, currentTime: number, phases?: SwingPhase[]) {
   if (!result) return "";
   const targetFrame = Math.round(currentTime * result.video.fps);
-  return result.phases.find((phase) => targetFrame >= phase.startFrame && targetFrame <= phase.endFrame)?.name ?? "";
+  return (phases || result.phases).find((phase) => targetFrame >= phase.startFrame && targetFrame <= phase.endFrame)?.name ?? "";
 }
 
 function formatAnalysisDate(value: string) {
@@ -121,6 +122,21 @@ function activateWithKeyboard(event: KeyboardEvent<HTMLElement>, action: () => v
   action();
 }
 
+function clampFrame(value: number, min: number, max: number) {
+  return Math.max(min, Math.min(max, Math.round(value)));
+}
+
+function phaseFingerprint(phases: SwingPhase[]) {
+  return phases.map((phase) => `${phase.name}:${phase.startFrame}:${phase.endFrame}`).join("|");
+}
+
+function withPhaseTimes(phases: SwingPhase[], fps: number) {
+  return phases.map((phase) => ({
+    ...phase,
+    timeSec: Number((phase.startFrame / Math.max(fps, 1)).toFixed(3)),
+  }));
+}
+
 function sleep(ms: number) {
   return new Promise((resolve) => window.setTimeout(resolve, ms));
 }
@@ -135,6 +151,9 @@ export function SwingAiPage() {
   const [viewAngle, setViewAngle] = useState<SwingViewAngle>("down-the-line");
   const [dominantHand, setDominantHand] = useState<SwingDominantHand>("right");
   const [analysis, setAnalysis] = useState<SwingAnalysisResult | null>(null);
+  const [phaseDraft, setPhaseDraft] = useState<SwingPhase[] | null>(null);
+  const [phaseSaving, setPhaseSaving] = useState(false);
+  const [phaseError, setPhaseError] = useState("");
   const [analysisHistory, setAnalysisHistory] = useState<SwingAnalysisListItem[]>([]);
   const [historyLoading, setHistoryLoading] = useState(false);
   const [status, setStatus] = useState<"idle" | "queued" | "running" | "done">("idle");
@@ -172,9 +191,16 @@ export function SwingAiPage() {
     void refreshAnalysisHistory();
   }, []);
 
+  useEffect(() => {
+    setPhaseDraft(analysis ? analysis.phases : null);
+    setPhaseError("");
+  }, [analysis]);
+
   const videoPreviewUrl = localVideoPreviewUrl || historyVideoUrl;
   const frame = nearestFrame(analysis, currentTime);
-  const activePhaseName = currentPhaseName(analysis, currentTime);
+  const displayPhases = phaseDraft || analysis?.phases || [];
+  const phaseDraftChanged = Boolean(analysis && phaseDraft && phaseFingerprint(analysis.phases) !== phaseFingerprint(phaseDraft));
+  const activePhaseName = currentPhaseName(analysis, currentTime, phaseDraft || undefined);
   const scoreRows = useMemo(
     () =>
       analysis
@@ -201,8 +227,59 @@ export function SwingAiPage() {
   };
 
   const seekToPhase = (phaseName: string) => {
-    const phase = analysis?.phases.find((item) => item.name === phaseName);
+    const phase = displayPhases.find((item) => item.name === phaseName) || analysis?.phases.find((item) => item.name === phaseName);
     if (phase) seekToFrame(phase.startFrame);
+  };
+
+  const updatePhaseBoundary = (index: number, field: "startFrame" | "endFrame", rawValue: string) => {
+    if (!analysis) return;
+    const numericValue = Number(rawValue);
+    if (!Number.isFinite(numericValue)) return;
+
+    setPhaseDraft((current) => {
+      const source = current || analysis.phases;
+      const next = source.map((phase) => ({ ...phase }));
+      const phase = next[index];
+      if (!phase) return source;
+
+      if (field === "startFrame") {
+        if (index === 0) return source;
+        const previous = next[index - 1];
+        const value = clampFrame(numericValue, previous.startFrame + 1, phase.endFrame);
+        previous.endFrame = value - 1;
+        phase.startFrame = value;
+      } else {
+        if (index === next.length - 1) return source;
+        const following = next[index + 1];
+        const value = clampFrame(numericValue, phase.startFrame, following.endFrame - 1);
+        phase.endFrame = value;
+        following.startFrame = value + 1;
+      }
+
+      return withPhaseTimes(next, analysis.video.fps);
+    });
+  };
+
+  const resetPhaseDraft = () => {
+    if (!analysis) return;
+    setPhaseDraft(analysis.phases);
+    setPhaseError("");
+  };
+
+  const savePhaseDraft = async () => {
+    if (!analysis || !phaseDraft || !phaseDraftChanged) return;
+    setPhaseSaving(true);
+    setPhaseError("");
+    try {
+      const response = await updateSwingAnalysisPhases(analysis.id, phaseDraft);
+      setAnalysis(response.result);
+      setPhaseDraft(response.result.phases);
+      void refreshAnalysisHistory();
+    } catch {
+      setPhaseError(text(language, "구간 보정을 저장하지 못했습니다.", "Could not save phase edits."));
+    } finally {
+      setPhaseSaving(false);
+    }
   };
 
   const loadAnalysisResult = async (item: SwingAnalysisListItem) => {
@@ -463,7 +540,7 @@ export function SwingAiPage() {
           </div>
           {analysis ? (
             <div aria-label="Swing phase timeline" className="swing-phase-timeline">
-              {analysis.phases.map((phase) => (
+              {displayPhases.map((phase) => (
                 <button
                   aria-label={`${phaseLabel(phase.name)} ${phase.startFrame} frame`}
                   className={`swing-phase-marker${activePhaseName === phase.name ? " is-active" : ""}`}
@@ -519,7 +596,7 @@ export function SwingAiPage() {
                 <Chip>{analysis.phases.length}</Chip>
               </div>
               <div className="swing-phase-list">
-                {analysis.phases.map((phase) => (
+                {displayPhases.map((phase) => (
                   <button
                     className={`swing-phase-row${activePhaseName === phase.name ? " is-active" : ""}`}
                     key={phase.name}
@@ -533,6 +610,65 @@ export function SwingAiPage() {
               </div>
             </Card>
           </div>
+
+          <Card className="swing-phase-editor-card">
+            <div className="card-title-row">
+              <div>
+                <p className="card-kicker">Phase Edit</p>
+                <h2>{text(language, "구간 보정", "Phase Adjustment")}</h2>
+              </div>
+              <SlidersHorizontal size={18} />
+            </div>
+            <div className="swing-phase-editor-list">
+              {displayPhases.map((phase, index) => (
+                <div className="swing-phase-editor-row" key={phase.name}>
+                  <button
+                    className={`swing-phase-editor-seek${activePhaseName === phase.name ? " is-active" : ""}`}
+                    onClick={() => seekToFrame(phase.startFrame)}
+                    type="button"
+                  >
+                    <span>{phaseLabel(phase.name)}</span>
+                    <small>{phase.timeSec.toFixed(2)}s</small>
+                  </button>
+                  <label>
+                    <span>Start</span>
+                    <input
+                      disabled={index === 0 || phaseSaving}
+                      inputMode="numeric"
+                      max={phase.endFrame}
+                      min={index === 0 ? 0 : displayPhases[index - 1].startFrame + 1}
+                      onChange={(event) => updatePhaseBoundary(index, "startFrame", event.target.value)}
+                      type="number"
+                      value={phase.startFrame}
+                    />
+                  </label>
+                  <label>
+                    <span>End</span>
+                    <input
+                      disabled={index === displayPhases.length - 1 || phaseSaving}
+                      inputMode="numeric"
+                      max={index === displayPhases.length - 1 ? maxAnalysisFrame(analysis) : displayPhases[index + 1].endFrame - 1}
+                      min={phase.startFrame}
+                      onChange={(event) => updatePhaseBoundary(index, "endFrame", event.target.value)}
+                      type="number"
+                      value={phase.endFrame}
+                    />
+                  </label>
+                </div>
+              ))}
+            </div>
+            {phaseError ? <div className="form-error">{phaseError}</div> : null}
+            <div className="swing-phase-editor-actions">
+              <Button disabled={!phaseDraftChanged || phaseSaving} onClick={resetPhaseDraft} type="button" variant="ghost">
+                <RotateCcw size={16} />
+                {text(language, "초기화", "Reset")}
+              </Button>
+              <Button disabled={!phaseDraftChanged || phaseSaving} onClick={savePhaseDraft} type="button">
+                <Save size={16} />
+                {phaseSaving ? text(language, "저장 중", "Saving") : text(language, "저장", "Save")}
+              </Button>
+            </div>
+          </Card>
 
           <Card className="swing-recommendation-card">
             <div className="card-title-row">

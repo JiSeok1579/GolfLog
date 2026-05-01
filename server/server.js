@@ -16,6 +16,7 @@ const cookieMaxAge = 60 * 60 * 24 * 400;
 const validClubs = new Set(["Driver", "Wood", "Hybrid", "4I", "5I", "6I", "7I", "8I", "9I", "PW", "AW", "SW"]);
 const validViewAngles = new Set(["down-the-line", "face-on"]);
 const validDominantHands = new Set(["right", "left"]);
+const swingPhaseOrder = ["address", "takeaway", "backswing_top", "downswing", "impact", "follow_through", "finish"];
 
 function createId(prefix) {
   return `${prefix}-${randomUUID()}`;
@@ -639,7 +640,7 @@ function analysisSummary(analysis, jobs) {
     recommendationCount: analysis.recommendations.length,
     scores: analysis.scores,
     status: analysis.status,
-    updatedAt: job?.updatedAt || analysis.createdAt,
+    updatedAt: job?.updatedAt || analysis.updatedAt || analysis.createdAt,
     video: analysis.video,
   };
 }
@@ -664,6 +665,57 @@ function findNearestPoseFrame(analysis, frame) {
     if (!best) return current;
     return Math.abs(current.frame - frame) < Math.abs(best.frame - frame) ? current : best;
   }, null);
+}
+
+function maxAnalysisFrame(analysis) {
+  const phaseMax = analysis.phases.reduce((best, phase) => Math.max(best, phase.endFrame), 0);
+  const poseMax = analysis.pose2dFrames.reduce((best, poseFrame) => Math.max(best, poseFrame.frame), 0);
+  return Math.max(1, phaseMax, poseMax, Math.round(analysis.video.durationSec * analysis.video.fps));
+}
+
+function normalizeAnalysisPhases(analysis, phases) {
+  if (!Array.isArray(phases) || phases.length !== swingPhaseOrder.length) return null;
+  const maxFrame = maxAnalysisFrame(analysis);
+  const normalized = [];
+
+  for (let index = 0; index < swingPhaseOrder.length; index += 1) {
+    const phase = phases[index];
+    if (!phase || phase.name !== swingPhaseOrder[index]) return null;
+
+    const startFrame = Math.round(Number(phase.startFrame));
+    const endFrame = Math.round(Number(phase.endFrame));
+    if (!Number.isFinite(startFrame) || !Number.isFinite(endFrame)) return null;
+    if (startFrame < 0 || endFrame < startFrame || endFrame > maxFrame) return null;
+    if (index === 0 && startFrame !== 0) return null;
+    if (index > 0 && startFrame !== normalized[index - 1].endFrame + 1) return null;
+    if (index === swingPhaseOrder.length - 1 && endFrame !== maxFrame) return null;
+
+    normalized.push({
+      name: phase.name,
+      startFrame,
+      endFrame,
+      timeSec: Number((startFrame / Math.max(analysis.video.fps, 1)).toFixed(3)),
+    });
+  }
+
+  return normalized;
+}
+
+function updateAnalysisForUser(store, userId, analysisId, updater) {
+  const analyses = analysisListForUser(store, userId);
+  const current = analyses.find((analysis) => analysis.id === analysisId);
+  if (!current) return null;
+  const updated = updater(current);
+  return {
+    analysis: updated,
+    store: {
+      ...store,
+      swingAnalysesByUser: {
+        ...store.swingAnalysesByUser,
+        [userId]: analyses.map((analysis) => (analysis.id === analysisId ? updated : analysis)),
+      },
+    },
+  };
 }
 
 function upsertAnalysisJob(store, userId, job) {
@@ -991,6 +1043,56 @@ async function handleApi(req, res) {
       status: analysis.status,
       result: analysis,
     });
+    return;
+  }
+
+  const analysisPhasesMatch = url.pathname.match(/^\/api\/analysis\/([^/]+)\/phases$/);
+  if (req.method === "PATCH" && analysisPhasesMatch) {
+    const analysisId = decodeURIComponent(analysisPhasesMatch[1]);
+    const analysis = findAnalysis(store, auth.user.id, analysisId);
+    if (!analysis) {
+      sendJson(res, 404, { error: "analysis_not_found" });
+      return;
+    }
+
+    let body;
+    try {
+      body = await readJson(req);
+    } catch {
+      sendJson(res, 400, { error: "invalid_json" });
+      return;
+    }
+
+    const phases = normalizeAnalysisPhases(analysis, body?.phases);
+    if (!phases) {
+      sendJson(res, 400, { error: "invalid_analysis_phases" });
+      return;
+    }
+
+    const now = new Date().toISOString();
+    const updated = updateAnalysisForUser(store, auth.user.id, analysisId, (current) => ({
+      ...current,
+      phases,
+      updatedAt: now,
+    }));
+    if (!updated) {
+      sendJson(res, 404, { error: "analysis_not_found" });
+      return;
+    }
+
+    const job = findAnalysisJob(store, auth.user.id, analysisId);
+    const nextStore = job ? upsertAnalysisJob(updated.store, auth.user.id, { ...job, updatedAt: now }) : updated.store;
+    if (job?.resultPath) {
+      try {
+        writeFileSync(job.resultPath, `${JSON.stringify(updated.analysis, null, 2)}\n`, "utf8");
+      } catch {
+        sendJson(res, 500, { error: "analysis_result_save_failed" });
+        return;
+      }
+    }
+
+    writeStore(nextStore);
+    sendJson(res, 200, { result: updated.analysis });
     return;
   }
 

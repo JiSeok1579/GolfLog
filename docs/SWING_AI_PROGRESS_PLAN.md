@@ -45,6 +45,7 @@
 - [x] 실제 영상 없이 확인 가능한 예시 분석 생성
 - [x] `.venv/bin/python` 자동 감지와 공개 샘플 영상 기반 worker/normalizer 검증
 - [x] 저작권/데이터 운영 정책과 Git payload 검사 추가
+- [x] 수동 phase 보정 UI와 저장 API 추가
 
 ### Phase 1: 2D Golfer + Club Pose
 
@@ -144,4 +145,4 @@
 1. Python 3.11 legacy `mp.solutions` 또는 Python 3.13 MediaPipe Tasks 중 안정적인 pose runtime 확정
 2. GolfDB 등 공개 샘플 영상에서 실제 keypoint 품질 확인
 3. 클럽 head/grip 추정 고도화
-4. 수동 phase 보정 UI 추가
+4. phase별 추천 문구와 보정된 구간 기준 리포트 정합성 점검

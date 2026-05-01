@@ -183,6 +183,7 @@ export type SwingViewAngle = z.infer<typeof swingViewAngleSchema>;
 export type SwingDominantHand = z.infer<typeof swingDominantHandSchema>;
 export type SwingAnalysisStatus = z.infer<typeof swingAnalysisStatusSchema>;
 export type SwingPhaseName = z.infer<typeof swingPhaseNameSchema>;
+export type SwingPhase = z.infer<typeof swingPhaseSchema>;
 export type SwingPose2DFrame = z.infer<typeof swingPose2DFrameSchema>;
 export type SwingRecommendation = z.infer<typeof swingRecommendationSchema>;
 export type SwingAnalysisResult = z.infer<typeof swingAnalysisResultSchema>;

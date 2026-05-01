@@ -1,4 +1,4 @@
-import type { AppData, NewSwingAnalysisInput, SwingAnalysisResult, SwingAnalysisStatus, SwingPose2DFrame } from "./schema";
+import type { AppData, NewSwingAnalysisInput, SwingAnalysisResult, SwingAnalysisStatus, SwingPhase, SwingPose2DFrame } from "./schema";
 
 export type ApiUser = {
   id: string;
@@ -133,6 +133,18 @@ export async function fetchSwingAnalyses() {
 export async function fetchSwingAnalysis(analysisId: string) {
   const response = await fetch(`/api/analysis/${encodeURIComponent(analysisId)}`, {
     credentials: "include",
+  });
+  return parseJson<{ result: SwingAnalysisResult }>(response);
+}
+
+export async function updateSwingAnalysisPhases(analysisId: string, phases: SwingPhase[]) {
+  const response = await fetch(`/api/analysis/${encodeURIComponent(analysisId)}/phases`, {
+    body: JSON.stringify({ phases }),
+    credentials: "include",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    method: "PATCH",
   });
   return parseJson<{ result: SwingAnalysisResult }>(response);
 }

@@ -59,8 +59,9 @@
 - [x] 정규화 결과를 로컬 데이터 디렉터리의 `analysis/` 하위에 저장
 - [x] 프론트엔드에서 status polling 후 결과 조회
 - [x] video currentTime 기준으로 가까운 pose frame overlay 표시
+- [x] 손목, 어깨 폭, 클럽 종류, 주 사용 손, 스윙 진행률 기반 클럽 head/grip 휴리스틱 고도화
 - [ ] MediaPipe 의존성 설치 후 실제 영상에서 keypoint 검증
-- [ ] 클럽 head/grip 전용 검출 모델 또는 보정 UI 추가
+- [ ] 실제 클럽 head/grip 전용 검출 모델 또는 보정 UI 추가
 
 예시 데이터 운영 원칙:
 
@@ -89,7 +90,7 @@
 - [x] phase 목록 클릭 시 해당 프레임으로 seek
 - [x] recommendation 클릭 시 관련 phase로 seek
 - [ ] GolfDB/SwingNet 계열 모델 검토 및 교체 가능성 평가
-- [ ] 수동 phase 보정 UI 추가
+- [x] 수동 phase 보정 UI 추가
 
 ### Phase 3: 3D Pose Estimation
 
@@ -144,5 +145,5 @@
 
 1. Python 3.11 legacy `mp.solutions` 또는 Python 3.13 MediaPipe Tasks 중 안정적인 pose runtime 확정
 2. GolfDB 등 공개 샘플 영상에서 실제 keypoint 품질 확인
-3. 클럽 head/grip 추정 고도화
+3. 실제 클럽 head/grip 전용 검출 모델 또는 수동 보정 UI 추가
 4. phase별 추천 문구와 보정된 구간 기준 리포트 정합성 점검
